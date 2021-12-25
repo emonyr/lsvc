@@ -1,0 +1,295 @@
+#include <stdio.h>
+#include <unistd.h>
+#include <assert.h>
+#include <pthread.h>
+#include <string.h>
+
+#include "utils.h"
+#include "log.h"
+#include "file.h"
+#include "lbus.h"
+#include "network.h"
+#include "lsvc.h"
+
+
+lbus_endpoint_t self_endpoint = {0};
+static int saved_argc = 0;
+static const char **saved_argv = NULL;
+char *dummy_argv[] = {"lsvc"};
+
+// Be careful with the sequence
+lsvc_t *user_lsvc[] = {
+	&log_svc,
+	&lbus_svc,
+	&network_svc,
+	NULL,
+};
+
+lsvc_runtime_t g_lsvc = {
+	.running = 0,
+	.svc_list = user_lsvc,
+};
+
+void *lsvc_runtime_init(void);
+
+void *lsvc_runtime_get(void)
+{
+	if(!g_lsvc.running)
+		return lsvc_runtime_init();
+	
+	return &g_lsvc;
+}
+
+
+int lsvc_service_ioctl(void *_msg)
+{
+	int err;
+	lsvc_t **svc;
+	lbus_msg_t *msg = _msg;
+	lsvc_runtime_t *r = lsvc_runtime_get();
+	if(!r){
+		log_err("invalid runtime\n");
+		return -1;
+	}
+		
+	for(svc=r->svc_list; *svc; svc++){
+		if(lsvc_valid_event(msg->event, (*svc)->ev_base)){
+			if((*svc)->ioctl){
+				err = (*svc)->ioctl(r, msg);
+				if(err < 0)
+					log_err("service ioctl failed: ev 0x%08X\n", msg->event);
+			}
+		}
+	}
+	
+	return err;
+}
+
+// inter-service call
+int lsvc_thread_call(void *runtime, void *msg)
+{
+	lbus_msg_t *m = msg;
+	lsvc_runtime_t *r = lsvc_runtime_get();
+	if(!r){
+		log_err("invalid runtime\n");
+		return -1;
+	}
+	
+	if(!m || m->flags != LMSG_REQUEST){
+		log_err("invalid msg\n");
+		return -1;
+	}
+	
+	log_debug("\n\n===============\n");
+	log_debug("m->event: 0x%08X\n", m->event);
+	log_debug("m->size: %d\n", m->size);
+	log_debug("m->flags: %d\n", m->flags);
+	
+	return lsvc_service_ioctl(m);
+}
+
+int lsvc_handle_bus_call_routine(void *msg, void *userdata)
+{
+	lbus_msg_t *m = msg;
+	//lsvc_runtime_t *r = userdata;
+	
+	if(!m || m->flags != LMSG_REQUEST){
+		log_err("invalid msg\n");
+		return -1;
+	}
+	
+	log_debug("\n\n===============");
+	log_debug("m->event: 0x%08X\n", m->event);
+	log_debug("m->size: %d\n", m->size);
+	log_debug("m->flags: %d\n", m->flags);
+	
+	return lsvc_service_ioctl(m);
+}
+
+// inter-process call
+int lsvc_bus_call(void *runtime, void *msg)
+{
+	lsvc_runtime_t *r;
+	
+	if(runtime){
+		r = runtime;
+	}else{
+		r = lsvc_runtime_get();
+	}
+	
+	if(!r){
+		log_err("invalid runtime\n");
+		return -1;
+	}
+	
+	return lbus_msg_broadcast(r->priv, msg);
+}
+
+void lsvc_service_init(void)
+{
+	lsvc_t **svc;
+	lsvc_runtime_t *r = lsvc_runtime_get();
+	if(!r){
+		log_err("invalid runtime\n");
+		return;
+	}
+		
+	for(svc = r->svc_list; *svc; svc++){
+		if((*svc)->init)
+			(*svc)->init(r);
+	}
+}
+
+void lsvc_service_exit(void)
+{
+	lsvc_t **svc;
+	lsvc_runtime_t *r = lsvc_runtime_get();
+	if(!r){
+		log_err("invalid runtime\n");
+		return;
+	}
+		
+	for(svc = r->svc_list; *svc; svc++){
+		if((*svc)->exit)
+			(*svc)->exit(r);
+	}
+}
+
+int lsvc_shell_routine(void *msg, void *userdata)
+{
+	lbus_msg_t *m = msg;
+	
+	log_debug("m->event: 0x%08X\n", m->event);
+	log_debug("m->size: %d\n", m->size);
+	log_debug("m->flags: %d\n", m->flags);
+	
+	if(m->payload)
+		log_hex_dump(m->payload, m->size);
+	
+	return 0;
+}
+
+void *lsvc_runtime_init(void)
+{
+	int err;
+
+	if(!saved_argv){
+		saved_argv = dummy_argv;
+		saved_argc = ARRAY_SIZE(dummy_argv);
+	}
+	
+	if(saved_argc < 2){
+		self_endpoint.recv_cb = lsvc_handle_bus_call_routine;
+	}else{
+		self_endpoint.recv_cb = lsvc_shell_routine;
+		self_endpoint.bond = 1;	//hack for shell command, bypass ping event
+	}
+	
+	self_endpoint.userdata = &g_lsvc;
+	self_endpoint.runtime = &g_lsvc;
+	g_lsvc.priv = &self_endpoint;
+	err = lbus_endpoint_create(g_lsvc.priv);
+	if(err < 0){
+		log_err("Failed to create endpoint\n");
+		return NULL;
+	}
+	
+	g_lsvc.running = 1;
+	sprintf(self_endpoint.name, "%s", "lsvc");
+	
+	return &g_lsvc;
+}
+
+int lsvc_handle_sys_command(int argc, const char *argv[])
+{
+	int err = -1;
+	lbus_msg_t *msg = NULL;
+	lsvc_t **svc;
+	lsvc_runtime_t *r;
+
+	if (argc < 2) {
+		log_err("Usage: %s MODULE [OPTION]\n", file_get_striped_name(argv[0]));
+		return -1;
+	}
+
+	saved_argc = argc;
+	saved_argv = argv;
+
+	r = lsvc_runtime_get();
+	if (!r) {
+		log_err("invalid runtime\n");
+		return -1;
+	}
+	
+	for (svc=r->svc_list; *svc; svc++) {
+		if (strcmp(argv[1], (*svc)->name) != 0)
+			continue;
+
+		if ((*svc)->getopt) {
+			msg = NULL;
+			err = (*svc)->getopt(argc, &argv[0], &msg);
+			
+			if (err) {
+				log_err("Failed to match module event\n");
+				break;
+			}
+		}
+		
+		// use lsvc_bus_call since it's a different process
+		err = lsvc_bus_call(r, msg);
+		break;
+	}
+	
+	if (err < 0)
+		log_err("Usage: %s MODULE [OPTION]\n", file_get_striped_name(argv[0]));
+	
+	lbus_msg_destroy(msg);
+	return err;
+}
+
+void lsvc_main_loop(void)
+{
+	while (g_lsvc.running) {
+		sleep(1);
+	}
+}
+
+void lsvc_shutdown(void *runtime)
+{
+	lsvc_runtime_t *r;
+	
+	if(runtime){
+		r = runtime;
+	}else{
+		r = &g_lsvc;
+	}
+	
+	r->running = 0;
+}
+
+int lsvc_event_send(int event, unsigned char *data, unsigned int size, 
+						unsigned int flags, int broadcast)
+{
+	int err;
+	lbus_msg_t *msg = lbus_msg_new(size);
+	if(!msg){
+		log_err("Failed to alloc msg buffer\n");
+		return -1;
+	}
+	
+	msg->event = event;
+	memcpy(msg->payload, data, size);
+	msg->flags = flags;
+	
+	if(broadcast){
+		err = lsvc_bus_call(NULL, msg);
+	}else{
+		err = lsvc_thread_call(NULL, msg);
+	}
+	
+	lbus_msg_destroy(msg);
+	
+	return err;
+}
+
+
