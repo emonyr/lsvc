@@ -14,8 +14,10 @@ typedef enum {
 }bus_svc_event_t;
 
 typedef enum {
-	LMSG_REQUEST,
-	LMSG_RESPONSE,
+	LMSG_REQUEST 		= (1<<0),
+	LMSG_RESPONSE 		= (1<<1),
+	LMSG_BUS_CALL 		= (1<<2),
+	LMSG_THREAD_CALL 	= (1<<3),
 }lbus_flag_t;
 
 typedef struct {
@@ -23,6 +25,7 @@ typedef struct {
 	unsigned int msg_id;
 	unsigned int size;
 	unsigned int flags;
+	socket_info_t iface;
 	unsigned char *payload;
 }__attribute__ ((packed))lbus_msg_t;
 
@@ -42,7 +45,7 @@ typedef struct{
 	void *timer;
 	pthread_t tid;
 	pthread_mutex_t mtx;
-	socket_info_t udp;
+	socket_info_t iface;
 	struct list_head entry;
 }__attribute__ ((packed))lbus_endpoint_t;
 
@@ -61,7 +64,7 @@ extern void * lbus_msg_new(unsigned int data_size);
 extern void lbus_msg_destroy(void *msg);
 
 extern int lbus_send_ping(lbus_endpoint_t *ep);
-extern int lbus_send_pong(lbus_endpoint_t *ep);
+extern int lbus_send_pong(lbus_endpoint_t *ep, void *src_msg);
 
 extern int lbus_borker_create(lbus_broker_t *bk);
 extern int lbus_endpoint_create(lbus_endpoint_t *ep);

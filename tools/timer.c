@@ -35,7 +35,7 @@ typedef struct utils_timer {
 
 void timer_handler_f(union sigval v)
 {
-	prctl(PR_SET_NAME, "timer_handler");	
+	prctl(PR_SET_NAME, "timer_handler");
 	log_debug("timer_handler\n");
 	
 	utils_timer_t *t;

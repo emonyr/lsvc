@@ -75,12 +75,12 @@ int lsvc_thread_call(void *runtime, void *msg)
 		return -1;
 	}
 	
-	if(!m || m->flags != LMSG_REQUEST){
+	if(!m || m->flags & LMSG_RESPONSE){
 		log_err("invalid msg\n");
 		return -1;
 	}
 	
-	log_debug("\n\n===============\n");
+	log_debug("\n\n------ lsvc thread call ------\n");
 	log_debug("m->event: 0x%08X\n", m->event);
 	log_debug("m->size: %d\n", m->size);
 	log_debug("m->flags: %d\n", m->flags);
@@ -93,12 +93,12 @@ int lsvc_handle_bus_call_routine(void *msg, void *userdata)
 	lbus_msg_t *m = msg;
 	//lsvc_runtime_t *r = userdata;
 	
-	if(!m || m->flags != LMSG_REQUEST){
+	if(!m || m->flags & LMSG_RESPONSE){
 		log_err("invalid msg\n");
 		return -1;
 	}
 	
-	log_debug("\n\n===============");
+	log_debug("\n\n------ lsvc bus call ------\n");
 	log_debug("m->event: 0x%08X\n", m->event);
 	log_debug("m->size: %d\n", m->size);
 	log_debug("m->flags: %d\n", m->flags);
@@ -268,7 +268,7 @@ void lsvc_shutdown(void *runtime)
 }
 
 int lsvc_event_send(int event, unsigned char *data, unsigned int size, 
-						unsigned int flags, int broadcast)
+						unsigned int flags, const void *src_msg)
 {
 	int err;
 	lbus_msg_t *msg = lbus_msg_new(size);
@@ -280,10 +280,13 @@ int lsvc_event_send(int event, unsigned char *data, unsigned int size,
 	msg->event = event;
 	memcpy(msg->payload, data, size);
 	msg->flags = flags;
+
+	if ((msg->flags & LMSG_RESPONSE) && src_msg)
+		memcpy(&msg->iface.des, &((lbus_msg_t *)src_msg)->iface.src, sizeof(msg->iface.des));
 	
-	if(broadcast){
+	if (msg->flags & LMSG_BUS_CALL) {
 		err = lsvc_bus_call(NULL, msg);
-	}else{
+	} else {
 		err = lsvc_thread_call(NULL, msg);
 	}
 	

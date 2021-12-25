@@ -35,6 +35,6 @@ extern int lsvc_thread_call(void *runtime, void *msg);
 extern int lsvc_bus_call(void *runtime, void *msg);
 extern void lsvc_shutdown(void *runtime);
 extern int lsvc_event_send(int event, unsigned char *data, unsigned int size, 
-						unsigned int flags, int broadcast);
+						unsigned int flags, const void *src_msg);
 
 #endif /* __LSVC_H__ */

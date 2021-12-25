@@ -32,12 +32,12 @@
 
 network_svc_state_t network_state = {0};
 
-int network_svc_state(void *_msg)
+int network_svc_state(const void *_msg)
 {
 	network_svc_state_t *s = &network_state;
 
 	return lsvc_event_send(NETWORK_EV_GET_STATE, s, sizeof(network_svc_state_t),
-							LMSG_RESPONSE, 1);
+							LMSG_RESPONSE|LMSG_BUS_CALL, _msg);
 }
 
 typedef struct {
@@ -171,13 +171,13 @@ int network_ping(const char *des, int count)
 	
 	if(!des){
 		log_err("Invalid address to ping\n");
-		return -1;
+		goto failed;
 	}
 
 	host = gethostbyname(des);
 	if(!host){
 		log_err("gethostbyname failed\n");
-		return -1;
+		goto failed;
 	}else{
 		memcpy(&inaddr, host->h_addr_list[0], host->h_length);
 	}
@@ -274,7 +274,7 @@ void network_state_report(void *arg, timer_t id)
 	if(s->v == NW_WIFI_CONFIG)
 		return;
 	
-	err = network_ping("www.baidu.com", 1);
+	err = network_ping("www.baidu.com", 2);
 
 	if(!err){
 		s->v = NW_WIFI_CONNECTED;
@@ -289,7 +289,7 @@ void network_state_report(void *arg, timer_t id)
 	log_info("Network state update: %d\n", s->v);
 	
 	err = lsvc_event_send(NETWORK_EV_STATE_REPORT, s, sizeof(network_svc_state_t),
-							0, 1);
+							LMSG_BUS_CALL, NULL);
 	
 	return;
 }
@@ -309,17 +309,17 @@ int network_svc_intent_handler(int event, void *data, int size)
 		
 		case NW_WIFI_CONNECTING:
 			s->v = NW_WIFI_CONNECTING;
-			ret = lsvc_event_send(NETWORK_EV_WIFI_CONNECTING, NULL, 0, 0, 1);
+			ret = lsvc_event_send(NETWORK_EV_WIFI_CONNECTING, NULL, 0, LMSG_BUS_CALL, NULL);
 		break;
 		
 		case NW_WIFI_CONNECTED:
 			s->v = NW_WIFI_CONNECTED;
-			ret = lsvc_event_send(NETWORK_EV_WIFI_CONFIG_SUCCESS, NULL, 0, 0, 1);
+			ret = lsvc_event_send(NETWORK_EV_WIFI_CONFIG_SUCCESS, NULL, 0, LMSG_BUS_CALL, NULL);
 		break;
 		
 		case NW_WIFI_DISCONNECTED:
 			s->v = NW_WIFI_DISCONNECTED;
-			ret = lsvc_event_send(NETWORK_EV_WIFI_CONFIG_FAILED, NULL, 0, 0, 1);
+			ret = lsvc_event_send(NETWORK_EV_WIFI_CONFIG_FAILED, NULL, 0, LMSG_BUS_CALL, NULL);
 		break;
 	}
 	
@@ -399,7 +399,7 @@ int network_svc_ioctl(void *runtime, void *_msg)
 	int err = -1;
 	lbus_msg_t *msg = _msg;
 	network_ctl_t *ctl = msg->payload;
-	log_info("event 0x%08X\n", msg->event);
+	log_debug("event 0x%08X\n", msg->event);
 
 	switch(msg->event){
 		case NETWORK_EV_GET_STATE:

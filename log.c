@@ -16,14 +16,14 @@ log_svc_state_t log_state = {
 	.mtx = PTHREAD_MUTEX_INITIALIZER,
 };
 
-int log_svc_state(void *_msg)
+int log_svc_state(const void *_msg)
 {
 	log_svc_state_t *s = &log_state;
 	
 	//log_to_file("/tmp/log.log", "%d\n", s->v);
 
 	return lsvc_event_send(LOG_EV_GET_STATE, s, sizeof(log_svc_state_t), 
-							LMSG_RESPONSE, 1);
+							LMSG_RESPONSE|LMSG_BUS_CALL, _msg);
 }
 
 
@@ -36,11 +36,11 @@ int log_svc_state(void *_msg)
 */
 
 char *log_level_str[] = {
-	"LOG_LEVEL_FATAL",
-	"LOG_LEVEL_ERROR",
-	"LOG_LEVEL_WARNING",
-	"LOG_LEVEL_INFO",
-	"LOG_LEVEL_DEBUG",
+	[0] = "LOG_LEVEL_FATAL",
+	[1] = "LOG_LEVEL_ERROR",
+	[2] = "LOG_LEVEL_WARNING",
+	[3] = "LOG_LEVEL_INFO",
+	[4] = "LOG_LEVEL_DEBUG",
 };
 
 char log_level_ch[] = {'F', 'E', 'W', 'I', 'D'};
@@ -68,8 +68,8 @@ int log_impl(FILE *output, int level, const char* filename, int line,
 	cur_time = _tv.tv_sec;
 	if(!gmtime_r(&cur_time, &_tm))
 		return -1;
-
-	fprintf(output, "%s[%02d-%02d-%02d %02d:%02d:%02d.%03d][%s][%s:%d<%s>] \033[0m", 
+	
+	fprintf(output, "%s[%02d-%02d-%02d %02d:%02d:%02d.%03d][%c][%s:%d] \033[0m<%s> ", 
 						log_level_color[level],
 						_tm.tm_year + 1900,
 						_tm.tm_mon + 1,
@@ -77,7 +77,7 @@ int log_impl(FILE *output, int level, const char* filename, int line,
 						(_tm.tm_hour + 8) % 24, 
 						_tm.tm_min, _tm.tm_sec,
 						(unsigned int)_tv.tv_usec/1000, 
-						log_level_str[level],
+						log_level_ch[level],
 						file_get_striped_name(filename), 
 						line, function);
 	
@@ -141,7 +141,6 @@ int log_set_level(log_level_t level)
 
 int log_svc_init(void *runtime)
 {
-	log_set_level(LOG_LEVEL_DEBUG);
 	return 0;
 }
 
@@ -154,7 +153,7 @@ int log_svc_exit(void *runtime)
 /*
  * shell command example
  * #set log level
- * /usr/local/bin/lsvc log -l 2
+ * /usr/local/bin/lsvc log -l 4
  */
 int log_svc_getopt(int argc, const char *argv[], void **msg)
 {
@@ -170,8 +169,11 @@ int log_svc_getopt(int argc, const char *argv[], void **msg)
 
 	m = *msg;
 	ctl = m->payload;
-	while((opt = getopt(argc, (void *)argv, "l:")) != -1){
+	while((opt = getopt(argc, (void *)argv, "vl:")) != -1){
 		switch (opt) {
+			case 'v':
+				m->event = LOG_EV_GET_STATE;
+				break;
 			case 'l':
 				m->event = LOG_EV_SET_LEVEL;
 				ctl->level = atoi(optarg);

@@ -7,8 +7,13 @@ typedef struct {
 	int fd;
 	char addr[32];
 	unsigned int port;
-	unsigned int remote_len;
-	struct sockaddr_in remote;
+	
+	struct sockaddr_in src;
+	unsigned int src_len;
+
+	struct sockaddr_in des;
+	unsigned int des_len;
+
 }__attribute__ ((packed))socket_info_t;
 
 

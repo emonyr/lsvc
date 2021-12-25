@@ -28,7 +28,7 @@ typedef struct {
 }log_ctl_t;
 
 #ifndef log_fatal
-#define log_debug(format...) log_impl(stderr, LOG_LEVEL_FATAL, __FILE__, __LINE__, __func__, format)
+#define log_fatal(format...) log_impl(stderr, LOG_LEVEL_FATAL, __FILE__, __LINE__, __func__, format)
 #endif
 
 #ifndef log_err
@@ -36,7 +36,7 @@ typedef struct {
 #endif
 
 #ifndef log_warn
-#define log_debug(format...) log_impl(stderr, LOG_LEVEL_WARNING, __FILE__, __LINE__, __func__, format)
+#define log_warn(format...) log_impl(stderr, LOG_LEVEL_WARNING, __FILE__, __LINE__, __func__, format)
 #endif
 
 #ifndef log_info
