@@ -36,7 +36,7 @@ int socket_set_close_on_exec(int fd, int val)
 	else
 		flags &= ~O_CLOEXEC;
 	
-	if(fcntl(fd,F_SETFL,flags) == -1){
+	if(fcntl(fd,F_SETFL,flags) == -1) {
         fprintf(stderr, "%s failed: %s\n" , __func__, strerror(errno));
 		return -1;
     }
@@ -60,7 +60,7 @@ int socket_set_non_block(int fd, int val)
 	else
 		flags &= ~O_NONBLOCK;
 	
-	if(fcntl(fd,F_SETFL,flags) == -1){
+	if(fcntl(fd,F_SETFL,flags) == -1) {
         fprintf(stderr, "%s failed: %s\n" , __func__, strerror(errno));
 		return -1;
     }
@@ -74,13 +74,13 @@ int socket_set_reuse(int fd, int val)
 		return -1;
 	
 	if(setsockopt(fd,SOL_SOCKET,SO_REUSEADDR,
-						(void *)&val,sizeof(val)) == -1){
+						(void *)&val,sizeof(val)) == -1) {
         fprintf(stderr, "%s failed: %s\n" , __func__, strerror(errno));
 		return -1;
     }
 	
 	//if(setsockopt(fd,SOL_SOCKET,SO_REUSEPORT,
-	//					(void *)&val,sizeof(val)) == -1){
+	//					(void *)&val,sizeof(val)) == -1) {
     //    fprintf(stderr, "%s failed: %s\n" , __func__, strerror(errno));
 	//	return -1;
     //}
@@ -90,11 +90,11 @@ int socket_set_reuse(int fd, int val)
 
 int socket_set_broadcast(int fd, int val)
 {
-	if(fd < 0 || val < 0)
+	if (fd < 0 || val < 0)
 		return -1;
 	
-	if(setsockopt(fd,SOL_SOCKET,SO_BROADCAST,
-						(void *)&val,sizeof(val)) == -1){
+	if (setsockopt(fd,SOL_SOCKET,SO_BROADCAST,
+						(void *)&val,sizeof(val)) == -1) {
         fprintf(stderr, "%s failed: %s\n" , __func__, strerror(errno));
 		return -1;
     }
@@ -103,14 +103,12 @@ int socket_set_broadcast(int fd, int val)
 }
 
 int socket_bind(socket_info_t *info)
-{
-	struct sockaddr_in address = {0};
+{	
+    info->src.sin_family = AF_INET;
+    info->src.sin_addr.s_addr = inet_addr(info->addr);
+	info->src.sin_port = htons(info->port);
 	
-    address.sin_family = AF_INET;
-    address.sin_addr.s_addr = inet_addr(info->addr);
-	address.sin_port = htons(info->port);
-	
-	if(bind(info->fd,&address,sizeof(struct sockaddr)) != 0){
+	if (bind(info->fd, &info->src, sizeof(struct sockaddr)) != 0) {
 		fprintf(stderr, "%s failed: %s\n", __func__, strerror(errno));
 		return -1;
 	}
@@ -120,7 +118,7 @@ int socket_bind(socket_info_t *info)
 
 int socket_close(socket_info_t *info)
 {
-	if(info->fd > 0)
+	if (info->fd > 0)
 		close(info->fd);
 	
 	info->fd = -1;
@@ -145,7 +143,7 @@ int socket_udp_rcvbuf_get(int fd)
 {
 	int rx_size = -1;
     socklen_t len = sizeof(rx_size);
-    if (getsockopt(fd, SOL_SOCKET, SO_RCVBUF, &rx_size, &len) < 0){
+    if (getsockopt(fd, SOL_SOCKET, SO_RCVBUF, &rx_size, &len) < 0) {
         fprintf(stderr, "%s failed: %s\n", __func__, strerror(errno));
         return -1;
     }else{
@@ -159,7 +157,7 @@ int socket_udp_rcvbuf_set(int fd, int val)
 {
 	int rx_size = val;
     socklen_t len = sizeof(rx_size);
-    if (setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &rx_size, &len) < 0){
+    if (setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &rx_size, &len) < 0) {
         fprintf(stderr, "%s failed: %s\n", __func__, strerror(errno));
         return -1;
     }else{
@@ -175,8 +173,8 @@ int socket_udp_init(socket_info_t *iface)
 		return -1;
 		
     iface->fd = socket(AF_INET, SOCK_DGRAM, 0);
-    if(iface->fd < 0){
-        printf("socket_udp_init failed: %s\n",strerror(errno));
+    if(iface->fd < 0) {
+        printf("Failed to create socket: %s\n",strerror(errno));
         return -1;
     }
 	
@@ -203,15 +201,16 @@ failed:
 int socket_udp_send(socket_info_t *iface, void *data, int size)
 {
 	int nbyte;
+	struct sockaddr_in address = {0};
 		
-	iface->des.sin_family = AF_INET;
-	iface->des.sin_addr.s_addr = inet_addr(iface->addr);
-	iface->des.sin_port = htons(iface->port);
+	address.sin_family = AF_INET;
+	address.sin_addr.s_addr = inet_addr(iface->addr);
+	address.sin_port = htons(iface->port);
 	
 	nbyte = sendto(iface->fd, data, size, MSG_DONTWAIT | MSG_NOSIGNAL, 
-						(struct sockaddr*)&iface->des, sizeof(iface->des));
+						(struct sockaddr*)&address, sizeof(address));
 	if(nbyte < 0)
-		fprintf(stderr, "socket_udp_send failed: %s:%d nbyte %d fd %d\n", iface->addr, iface->port, nbyte, iface->fd);
+		fprintf(stderr, "Socket_udp_send failed: %s:%d nbyte %d fd %d\n", iface->addr, iface->port, nbyte, iface->fd);
 	
 	return nbyte;
 }

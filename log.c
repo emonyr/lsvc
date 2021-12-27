@@ -12,7 +12,7 @@
 #include "log.h"
 
 log_svc_state_t log_state = {
-	.level = LOG_LEVEL_INFO,
+	.level = LOG_LEVEL_DEBUG,
 	.mtx = PTHREAD_MUTEX_INITIALIZER,
 };
 
@@ -22,7 +22,7 @@ int log_svc_state(const void *_msg)
 	
 	//log_to_file("/tmp/log.log", "%d\n", s->v);
 
-	return lsvc_event_send(LOG_EV_GET_STATE, s, sizeof(log_svc_state_t), 
+	return lsvc_event_send(LOG_EV_REPORT_STATE, s, sizeof(log_svc_state_t), 
 							LMSG_RESPONSE|LMSG_BUS_CALL, _msg);
 }
 
@@ -61,15 +61,15 @@ int log_impl(FILE *output, int level, const char* filename, int line,
 	time_t cur_time = 0;
 	struct tm _tm = {0};
 	
-	if(level > log_state.level)
+	if (level > log_state.level)
 		return 1;
 	
 	gettimeofday(&_tv, NULL);
 	cur_time = _tv.tv_sec;
-	if(!gmtime_r(&cur_time, &_tm))
+	if (!gmtime_r(&cur_time, &_tm))
 		return -1;
 	
-	fprintf(output, "%s[%02d-%02d-%02d %02d:%02d:%02d.%03d][%c][%s:%d] \033[0m<%s> ", 
+	fprintf(output, "%s[%02d-%02d-%02d %02d:%02d:%02d.%03d][%c][%s:%d] %s() ", 
 						log_level_color[level],
 						_tm.tm_year + 1900,
 						_tm.tm_mon + 1,
@@ -125,11 +125,11 @@ int log_set_level(log_level_t level)
 {
 	log_svc_state_t *s = &log_state;
 	
-	if(level < LOG_LEVEL_FATAL || level > LOG_LEVEL_DEBUG)
+	if (level < LOG_LEVEL_FATAL || level > LOG_LEVEL_DEBUG)
 		return -1;
 	
 	s->level = level;
-	log_info("log level changed to: %s\n", log_level_str[s->level]);
+	log_info("Log level changed to: %s\n", log_level_str[s->level]);
 	
 	return 0;
 }
@@ -157,7 +157,7 @@ int log_svc_exit(void *runtime)
  */
 int log_svc_getopt(int argc, const char *argv[], void **msg)
 {
-	int opt,err=0;
+	int opt,err=-1;
 	lbus_msg_t *m;
 	log_ctl_t *ctl;
 
@@ -169,14 +169,16 @@ int log_svc_getopt(int argc, const char *argv[], void **msg)
 
 	m = *msg;
 	ctl = m->payload;
-	while((opt = getopt(argc, (void *)argv, "vl:")) != -1){
+	while((opt = getopt(argc, (void *)argv, "vl:")) != -1) {
 		switch (opt) {
 			case 'v':
 				m->event = LOG_EV_GET_STATE;
+				err = 0;
 				break;
 			case 'l':
 				m->event = LOG_EV_SET_LEVEL;
 				ctl->level = atoi(optarg);
+				err = 0;
 				break;
 
 			case '?':
@@ -196,7 +198,7 @@ int log_svc_ioctl(void *runtime, void *_msg)
 	log_ctl_t *ctl = msg->payload;
 	log_debug("event 0x%08X\n", msg->event);
 	
-	switch(msg->event){
+	switch(msg->event) {
 		case LOG_EV_GET_STATE:
 			err = log_svc_state(msg);
 		break;
@@ -206,8 +208,8 @@ int log_svc_ioctl(void *runtime, void *_msg)
 		break;
 	}
 	
-	if(err < 0)
-		log_err("ioctl failed: ev 0x%08X\n", msg->event);
+	if (err < 0)
+		log_err("Ioctl failed: ev 0x%08X\n", msg->event);
 	
 	return err;
 }

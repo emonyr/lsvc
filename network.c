@@ -56,12 +56,12 @@ unsigned short network_ping_chksum(unsigned short *data,int len)
 	int sum=0;
 	unsigned short *w=data;
 	unsigned short answer=0;
-	while(nbyte > 1){
+	while(nbyte > 1) {
 		sum += *w++;
 		nbyte -= 2;
 	}
 
-	if(nbyte == 1){
+	if (nbyte == 1) {
 		*(unsigned char *)(&answer)=*(unsigned char *)w;
 		sum += answer;
 	}
@@ -102,10 +102,10 @@ int network_ping_unpack(int num, network_ping_t *p)
 
 	nbyte = p->rx_len;
 	nbyte -= header_len;
-	if(nbyte < 8)
+	if (nbyte < 8)
 		return -1;
 
-	if(		(icmp->icmp_type == ICMP_ECHOREPLY)
+	if (		(icmp->icmp_type == ICMP_ECHOREPLY)
 		&& 	(icmp->icmp_id == p->pid)
 		&& 	(icmp->icmp_seq == num))
 		return 0;
@@ -139,23 +139,23 @@ int network_ping_recv(int num, network_ping_t *p)
 	tv.tv_sec = 1;
 	tv.tv_usec = 0;
 
-	while(!p->timeout){
+	while(!p->timeout) {
 		select(p->sock.fd + 1, &rfds, NULL, NULL, &tv);
-		if(FD_ISSET(p->sock.fd,&rfds)){
+		if (FD_ISSET(p->sock.fd,&rfds)) {
 			p->rx_len = socket_udp_recv(&p->sock, p->rx_buf, sizeof(p->rx_buf));
-			if(p->rx_len <= 0){
+			if (p->rx_len <= 0) {
 				log_err("Failed to recv icmp packet\n");
 				return -1;
 			}
 		}
 
-		if(network_ping_unpack(num,p) == 0){
+		if (network_ping_unpack(num,p) == 0) {
 			utils_timer_stop(p->tid);
 			return 0;
 		}
 	}
 
-	if(p->timeout)
+	if (p->timeout)
 		return -1;
 
 	return 0;
@@ -169,26 +169,26 @@ int network_ping(const char *des, int count)
 	network_ping_t ping_info = {0};
 	network_ping_t *p = &ping_info;
 	
-	if(!des){
+	if (!des) {
 		log_err("Invalid address to ping\n");
 		goto failed;
 	}
 
 	host = gethostbyname(des);
-	if(!host){
+	if (!host) {
 		log_err("gethostbyname failed\n");
 		goto failed;
 	}else{
 		memcpy(&inaddr, host->h_addr_list[0], host->h_length);
 	}
 
-	if(count <= 0)
+	if (count <= 0)
 		count = 1;
 
 	sprintf(p->sock.addr, "%s", inet_ntoa(inaddr));
-	log_debug("ping des: %s(%s)\n", des, p->sock.addr);
+	log_debug("Ping des: %s(%s)\n", des, p->sock.addr);
 
-	if ((p->sock.fd = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP))< 0){
+	if ((p->sock.fd = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP))< 0) {
 		log_err("Failed to create socket\n");
 		return -1;
 	}
@@ -196,24 +196,24 @@ int network_ping(const char *des, int count)
 	socket_set_non_block(p->sock.fd, 1);
 	p->pid = getpid();
 	
-	for(i=0;i<count;i++){
-		if(network_ping_send(i,p) < 0){
+	for(i=0;i<count;i++) {
+		if (network_ping_send(i,p) < 0) {
 			log_err("Failed to send ping packet\n");
 			goto failed;
 		}
 
-		if(network_ping_recv(i,p) == 0){
+		if (network_ping_recv(i,p) == 0) {
 			goto success;
 		}
 	}
 
 failed:
 	socket_close(&p->sock);
-	log_info("ping failed: %s(%s)\n", des, p->sock.addr);
+	log_info("Ping failed: %s(%s)\n", des, p->sock.addr);
 	return -1;
 success:
 	socket_close(&p->sock);
-	log_info("ping success: %s(%s)\n", des, p->sock.addr);
+	log_info("Ping success: %s(%s)\n", des, p->sock.addr);
 	return 0;
 }
 
@@ -224,22 +224,22 @@ int network_eth_info_update(const char *eth_inf)
 	struct ifreq ifr = {0};
 	network_svc_state_t *s = &network_state;
 	
-	if(!eth_inf){
+	if (!eth_inf) {
 		log_err("Invalid ethernet interface\n");
 		return -1;
 	}
 	
 	sock = socket(AF_INET, SOCK_STREAM, 0);
-	if(sock < 0){
-		log_err("get %s mac address socket creat error\n", eth_inf);
+	if (sock < 0) {
+		log_err("Get %s mac address socket creat error\n", eth_inf);
 		return -1;
 	}
 	
 	strncpy(ifr.ifr_name, eth_inf, sizeof(ifr.ifr_name) - 1);
 	
-	if(ioctl(sock, SIOCGIFHWADDR, &ifr) < 0)
+	if (ioctl(sock, SIOCGIFHWADDR, &ifr) < 0)
 	{
-		log_err("get %s mac address error\n", eth_inf);
+		log_err("Get %s mac address error\n", eth_inf);
 		goto failed;
 	}
 	
@@ -251,8 +251,8 @@ int network_eth_info_update(const char *eth_inf)
 	(unsigned char)ifr.ifr_hwaddr.sa_data[4],
 	(unsigned char)ifr.ifr_hwaddr.sa_data[5]);
 	
-	if(ioctl(sock, SIOCGIFADDR, &ifr) < 0){
-		log_err("ioctl error: %s\n", strerror(errno));
+	if (ioctl(sock, SIOCGIFADDR, &ifr) < 0) {
+		log_err("Ioctl error: %s\n", strerror(errno));
 		goto failed;
 	}
 	
@@ -271,24 +271,24 @@ void network_state_report(void *arg, timer_t id)
 	int err;
 	network_svc_state_t *s = arg;
 	
-	if(s->v == NW_WIFI_CONFIG)
+	if (s->v == NW_WIFI_CONFIG)
 		return;
 	
 	err = network_ping("www.baidu.com", 2);
 
-	if(!err){
+	if (!err) {
 		s->v = NW_WIFI_CONNECTED;
-	}else if(s->v == NW_WIFI_CONNECTED){
+	}else if (s->v == NW_WIFI_CONNECTED) {
 		s->v = NW_WIFI_DISCONNECTED;
 	}
 	
 	err = network_eth_info_update("eth0");
-	if(err < 0)
+	if (err < 0)
 		log_err("Failed to update eth info\n");
 	
 	log_info("Network state update: %d\n", s->v);
 	
-	err = lsvc_event_send(NETWORK_EV_STATE_REPORT, s, sizeof(network_svc_state_t),
+	err = lsvc_event_send(NETWORK_EV_REPORT_STATE, s, sizeof(network_svc_state_t),
 							LMSG_BUS_CALL, NULL);
 	
 	return;
@@ -301,7 +301,7 @@ int network_svc_intent_handler(int event, void *data, int size)
 	network_svc_state_t *s = &network_state;
 	log_debug("event 0x%08X\n", event);
 	
-	switch(event){
+	switch(event) {
 		case NW_WIFI_CONFIG:
 			s->v = NW_WIFI_CONFIG;
 			ret = 0;
@@ -323,7 +323,7 @@ int network_svc_intent_handler(int event, void *data, int size)
 		break;
 	}
 	
-	if(ret < 0)
+	if (ret < 0)
 		log_err("Failed to process intent\n");
 	
 	return ret;
@@ -350,7 +350,7 @@ int network_svc_exit(void *runtime)
 {
 	network_svc_state_t *s = &network_state;
 	
-	if(s->tid){
+	if (s->tid) {
 		utils_timer_stop(s->tid);
 		s->tid = NULL;
 	}
@@ -365,7 +365,7 @@ int network_svc_exit(void *runtime)
  */
 int network_svc_getopt(int argc, const char *argv[], void **msg)
 {
-	int opt,err=0;
+	int opt,err=-1;
 	lbus_msg_t *m;
 	network_ctl_t *ctl;
 	
@@ -377,11 +377,12 @@ int network_svc_getopt(int argc, const char *argv[], void **msg)
 
 	m = *msg;
 	ctl = m->payload;
-	while((opt = getopt(argc, argv, "p:")) != -1){
+	while((opt = getopt(argc, argv, "p:")) != -1) {
 		switch (opt) {
 			case 'p':
 				m->event = NETWORK_EV_PING;
 				sprintf(ctl->ping_address, "%s", (char *)optarg);
+				err = 0;
 				break;
 
 			case '?':
@@ -399,9 +400,9 @@ int network_svc_ioctl(void *runtime, void *_msg)
 	int err = -1;
 	lbus_msg_t *msg = _msg;
 	network_ctl_t *ctl = msg->payload;
-	log_debug("event 0x%08X\n", msg->event);
+	log_info("event 0x%08X\n", msg->event);
 
-	switch(msg->event){
+	switch(msg->event) {
 		case NETWORK_EV_GET_STATE:
 			err = network_svc_state(msg);
 		break;
@@ -411,8 +412,8 @@ int network_svc_ioctl(void *runtime, void *_msg)
 		break;
 	}
 
-	if(err < 0)
-		log_err("ioctl failed: ev 0x%08X\n", msg->event);
+	if (err < 0)
+		log_err("Ioctl failed: ev 0x%08X\n", msg->event);
 
 	return err;
 }

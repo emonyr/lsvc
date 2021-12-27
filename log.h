@@ -7,6 +7,7 @@
 
 typedef enum {
 	LOG_EV_GET_STATE = LSVC_LOG_EVENT,
+	LOG_EV_REPORT_STATE,
 	LOG_EV_SET_LEVEL,
 }log_svc_event_t;
 
@@ -36,7 +37,7 @@ typedef struct {
 #endif
 
 #ifndef log_warn
-#define log_warn(format...) log_impl(stderr, LOG_LEVEL_WARNING, __FILE__, __LINE__, __func__, format)
+#define log_warn(format...) log_impl(stdout, LOG_LEVEL_WARNING, __FILE__, __LINE__, __func__, format)
 #endif
 
 #ifndef log_info
@@ -44,14 +45,14 @@ typedef struct {
 #endif
 
 #ifndef log_debug
-#define log_debug(format...) log_impl(stderr, LOG_LEVEL_DEBUG, __FILE__, __LINE__, __func__, format)
+#define log_debug(format...) log_impl(stdout, LOG_LEVEL_DEBUG, __FILE__, __LINE__, __func__, format)
 #endif
 
 #ifndef log_to_file
 #define log_to_file(file,format...) \
 	do{ \
 		FILE *fp = fopen(file,"a+"); \
-		log_impl(fp, L_DEBUG, __FILE__, __LINE__, __func__, format); \
+		log_impl(fp, LOG_LEVEL_DEBUG, __FILE__, __LINE__, __func__, format); \
 		fflush(fp); \
 		fclose(fp); \
 	}while(0)

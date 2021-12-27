@@ -4,9 +4,7 @@
 #include <signal.h>
 #include <errno.h>
 #include <string.h>
-#include <stddef.h>
 #include <pthread.h>
-#include <sys/prctl.h>
 #include <time.h>
 
 #include "log.h"
@@ -35,19 +33,16 @@ typedef struct utils_timer {
 
 void timer_handler_f(union sigval v)
 {
-	prctl(PR_SET_NAME, "timer_handler");
-	log_debug("timer_handler\n");
-	
 	utils_timer_t *t;
 	char timer_str[32] = {0};
-	//char *timer_ret = NULL;
-	//pthread_mutex_lock(&fastmutex);	
+	
+	pthread_mutex_lock(&fastmutex);	
 	if(v.sival_ptr){		
 		t = (utils_timer_t *)v.sival_ptr; 
 		sprintf(timer_str, "%x", (unsigned int)t->timerid);
 		if(kvlist_get(timerlist, timer_str)){
 			if(t->cb){                
-                log_debug("timer_handler %x\n", t->timerid);
+                //log_debug("timer_handler %x\n", t->timerid);
 				t->cb(t->arg, t->timerid);
 			}
 			if(!t->repeat){
@@ -62,7 +57,7 @@ void timer_handler_f(union sigval v)
 			free(t);
 		}
 	}	
-	//pthread_mutex_unlock(&fastmutex);
+	pthread_mutex_unlock(&fastmutex);
 
 }
 
@@ -78,7 +73,7 @@ int utils_timer_stop(utils_timer_t *timer)
 	/* delete timer from timerlist */
 	pthread_mutex_lock(&fastmutex);
 	kvlist_delete(timerlist, timer_str);	
-	log_debug("stop timer 0x%x done\n", timer);	
+	// log_debug("Stop timer 0x%x done\n", timer);	
 	pthread_mutex_unlock(&fastmutex);
 	
 	return 0;
@@ -100,7 +95,7 @@ void *utils_timer_start(void *cb, void *arg,
 	
 	t = (utils_timer_t *)malloc(sizeof(utils_timer_t));
 	if(!t){
-		log_err("malloc memory error(%s)\n", strerror(errno));
+		log_err("Malloc memory error(%s)\n", strerror(errno));
 		return NULL;
 	}
 	memset(t, 0, sizeof(utils_timer_t));
@@ -112,7 +107,7 @@ void *utils_timer_start(void *cb, void *arg,
 	t->evp.sigev_notify_function  = timer_handler_f;
 	ret = timer_create(CLOCK_MONOTONIC, &t->evp, &t->timerid);
 	if(ret < 0){
-		log_err("fail to create timer\n");
+		log_err("Fail to create timer\n");
 		return NULL;
 	}
 	t->it.it_interval.tv_sec = interval;
@@ -122,7 +117,7 @@ void *utils_timer_start(void *cb, void *arg,
 	
 	ret = timer_settime(t->timerid, 0, &t->it, NULL);
 	if(ret < 0){
-		log_err("fail to set timer\n");
+		log_err("Fail to set timer\n");
 		return NULL;
 	}
 
@@ -134,7 +129,7 @@ void *utils_timer_start(void *cb, void *arg,
 	kvlist_set(timerlist, timer_str, timer_str);	
 	pthread_mutex_unlock(&fastmutex);
 	
-	log_debug("start timer:0x%x\n", t->timerid);
+	// log_debug("Start timer:0x%x\n", t->timerid);
 	
     return (void *)t;
 }

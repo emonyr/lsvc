@@ -26,7 +26,7 @@ void *lbus_payload_get(void *msg)
 	lbus_msg_t *m = msg;
 	void *p = NULL;
 	
-	if(m->size)
+	if (m->size)
 		p = msg + LMSG_HEADER_SIZE;
 
 	return p;
@@ -37,13 +37,13 @@ void * lbus_msg_new(unsigned int data_size)
 	int alloc_len = LMSG_HEADER_SIZE + data_size;
 	lbus_msg_t *m = NULL;
 	
-	if(data_size > LMSG_MAX_DATA_SIZE){
-		log_err("request oversize\n");
+	if (data_size > LMSG_MAX_DATA_SIZE) {
+		log_err("Request oversize\n");
 		return NULL;
 	}
 	
 	m = mem_alloc(alloc_len);
-	if(!m){
+	if (!m) {
 		log_err("mem_alloc failed\n");
 		return NULL;
 	}
@@ -57,7 +57,7 @@ void * lbus_msg_new(unsigned int data_size)
 void lbus_msg_destroy(void *msg)
 {
 	lbus_msg_t *m = msg;
-	if(m){
+	if (m) {
 		mem_free(m);
 	}
 }
@@ -68,7 +68,7 @@ int lbus_msg_broadcast(lbus_endpoint_t *ep,void *msg)
 	lbus_msg_t *m = msg;
 	socket_info_t iface = {0};
 	
-	if(!m->msg_id)
+	if (!m->msg_id)
 		m->msg_id = time(NULL);
 	
 	pthread_mutex_lock(&ep->mtx);
@@ -77,7 +77,7 @@ int lbus_msg_broadcast(lbus_endpoint_t *ep,void *msg)
 	iface.port = LBUS_UDP_PORT,	// sendto broker port
 	
 	nbyte = socket_udp_send(&iface, m, LMSG_HEADER_SIZE + m->size);
-	if(nbyte < 0)
+	if (nbyte < 0)
 		log_err("error: %s\n", strerror(errno));
 	pthread_mutex_unlock(&ep->mtx);
 	
@@ -92,12 +92,12 @@ int lbus_push_data(lbus_endpoint_t *ep, void *data, int size)
 	
 	pthread_mutex_lock(&ep->mtx);
 	nbyte = kmsg_push(kqueue, data, size);
-	//log_debug("kmsg_push: nbyte %d kqueue->size %d\n", nbyte, kqueue->size);
-	if(!kqueue->size)
-		log_err("invalid kqueue size %d\n", kqueue->size);
+	// log_debug("kmsg_push: nbyte %d kqueue->size %d\n", nbyte, kqueue->size);
+	if (!kqueue->size)
+		log_err("Invalid kqueue size %d\n", kqueue->size);
 	pthread_mutex_unlock(&ep->mtx);
 	
-	//log_debug("lbus_push_data: nbyte %d\n", nbyte);
+	// log_debug("lbus_push_data: nbyte %d\n", nbyte);
 	
 	return nbyte;
 }
@@ -106,20 +106,20 @@ int lbus_pop_data(lbus_endpoint_t *ep, void **bucket)
 {
 	int nbyte;
 	
-	if(!ep->running)
+	if (!ep->running)
 		return -1;
 	
 	pthread_mutex_lock(&ep->mtx);
 	
 	nbyte = kmsg_check(ep->queue);
 	//log_debug(">>>>>>>>>>>>>kmsg_check: nbyte %d\n", nbyte);
-	if(!nbyte || nbyte < LMSG_HEADER_SIZE){
+	if (!nbyte || nbyte < LMSG_HEADER_SIZE) {
 		pthread_mutex_unlock(&ep->mtx);
 		return -1;
 	}
 	
 	*bucket = lbus_msg_new(nbyte);
-	if(!(*bucket)){
+	if (!(*bucket)) {
 		log_err("Failed to create new msg buffer\n");
 		sleep(1);
 		pthread_mutex_unlock(&ep->mtx);
@@ -127,8 +127,8 @@ int lbus_pop_data(lbus_endpoint_t *ep, void **bucket)
 	}
 	
 	nbyte = kmsg_pop(ep->queue, *bucket);
-	if(nbyte < 0){
-		log_err("invlid msg: nbyte %d\n", nbyte);
+	if (nbyte < 0) {
+		log_err("Invlid msg: nbyte %d\n", nbyte);
 		mem_free(*bucket);
 		*bucket = NULL;
 		pthread_mutex_unlock(&ep->mtx);
@@ -149,14 +149,14 @@ void lbus_udp_push_routine(void *data)
 	
 	assert(m);
 	
-	//log_debug("init\n");
+	//log_debug("Init\n");
 	pthread_detach(pthread_self());
 
-    while(ep->running){
+    while(ep->running) {
 		usleep(5000);	//sleep 5ms to release CPU
 		
 		nbyte = socket_udp_recv(&ep->iface, m, LMSG_MAX_SIZE);
-		if(nbyte > 0) {
+		if (nbyte > 0) {
 			//log_debug("### recv nbyte %d\n\n",nbyte);
 			memcpy(&m->iface, &ep->iface, sizeof(m->iface));
 			lbus_push_data(ep,m,nbyte);
@@ -166,15 +166,17 @@ void lbus_udp_push_routine(void *data)
 	lbus_msg_destroy(m);
 }
 
-void lbus_wait_for_pong(void *msg, void *endpoint)
+int lbus_try_bond(void *msg, void *endpoint)
 {
 	lbus_msg_t *m = msg;
 	lbus_endpoint_t *ep = endpoint;
 	
-	if(m->event  == LBUS_EV_PONG)
+	if (m->event  == LBUS_EV_PONG) {
 		ep->bond = 1;
+		return 0;
+	}
 	
-	return;
+	return -1;
 }
 
 void lbus_udp_pop_routine(void *data)
@@ -183,20 +185,22 @@ void lbus_udp_pop_routine(void *data)
 	lbus_msg_t *m = NULL;
     lbus_endpoint_t *ep = (lbus_endpoint_t *)data;
 	
-	//log_debug("init\n");
+	//log_debug("Init\n");
 	pthread_detach(pthread_self());
 
-	ep->timer = utils_timer_start(lbus_send_ping, ep, 1, 5, 1);
+	ep->timer = utils_timer_start(lbus_send_ping, ep, 1, 2, 1);
 
-    while(ep->running){
+    while(ep->running) {
 		usleep(20000);
 		
 		nbyte = lbus_pop_data(ep, &m);
-		if(nbyte > 0 && m && ep->recv_cb){
-			// log_debug("pop nbyte %d\n", nbyte);
-			// log_debug("%s ep->bond %d\n", ep->name, ep->bond);
-			if(m->event != LBUS_EV_PING && !ep->bond){
-				lbus_wait_for_pong(m, ep);
+		if (nbyte > 0 && m && ep->recv_cb) {
+			// log_debug("Pop nbyte %d\n", nbyte);
+			log_warn("%s pop event: 0x%08X\n", ep->name, m->event);
+			if (m->event != LBUS_EV_PING && !ep->bond) {
+				if(lbus_try_bond(m, ep) == -1) {
+					lbus_push_data(ep,m,nbyte);	// Not yet bonded, push back msg to the queue
+				}
 			}else{
 				m->payload = lbus_payload_get(m);
 				ep->recv_cb(m, ep->userdata);
@@ -210,14 +214,14 @@ void lbus_udp_pop_routine(void *data)
 
 void lbus_endpoint_destroy(lbus_endpoint_t *ep)
 {
-	if(ep->running == 0)
+	if (ep->running == 0)
 		return;
 	
 	ep->running = 0;
 	utils_timer_stop(ep->timer);
 	pthread_mutex_destroy(&ep->mtx);
 	socket_close(&ep->iface);
-	if(ep->queue)
+	if (ep->queue)
 		kmsg_delete(ep->queue);
 }
 
@@ -227,13 +231,13 @@ void *lbus_queue_init(void)
 	void *queue;
 	
 	queue = malloc(sizeof(struct kmsg));
-	if(!queue){
+	if (!queue) {
 		log_err("Failed to allocate queue buffer\n");
 		goto out;
    	}
 	
 	err = kmsg_new(queue, MAX_MSG_NUMBER * 8192); //128 * 8192
-    if(err < 0){
+    if (err < 0) {
 		log_err("Failed to create queue\n");
 		free(queue);
 		queue = NULL;
@@ -248,12 +252,12 @@ int lbus_broker_create(lbus_broker_t *bk)
 {
 	int err;
 	
-	if(bk->running){
+	if (bk->running) {
 		log_err("lbus broker already running\n");
 		return 1;
 	}
 	
-	if(!bk->dispatch){
+	if (!bk->dispatch) {
 		log_err("dispatch function not defined\n");
 		return -1;
 	}
@@ -264,7 +268,7 @@ int lbus_broker_create(lbus_broker_t *bk)
 	bk->ep.runtime = bk->runtime;
 	bk->ep.bond = 1; // broker auto bonded
 	err = lbus_endpoint_create(&bk->ep);
-	if(err < 0){
+	if (err < 0) {
 		log_debug("can not create endpoint\n");
 		return -1;
 	}
@@ -279,7 +283,7 @@ int lbus_endpoint_create(lbus_endpoint_t *ep)
 	int err = -1;
 	pthread_t pop_tid;
 	
-	if(ep->running){
+	if (ep->running) {
 		log_err("lbus endpoint already running\n");
 		return 1;
 	}
@@ -287,33 +291,33 @@ int lbus_endpoint_create(lbus_endpoint_t *ep)
 	sprintf(ep->iface.addr, "127.0.0.1");
 	
 	err = socket_udp_init(&ep->iface);
-	if(err < 0){
-		log_err("udp socket invalid\n");
+	if (err < 0) {
+		log_err("Udp socket invalid\n");
 		return -1;
 	}
 	
 	INIT_LIST_HEAD(&ep->entry);
 	pthread_mutex_init(&ep->mtx, NULL);
 	ep->queue = lbus_queue_init();
-	if(!ep->queue){
+	if (!ep->queue) {
 		log_err("Failed to init queue\n");
 		socket_close(&ep->iface);
 		return -1;
 	}
 	
 	ep->running = 1;
-	if (0 != pthread_create(&ep->tid, NULL, (void *)lbus_udp_push_routine, ep)){
+	if (0 != pthread_create(&ep->tid, NULL, (void *)lbus_udp_push_routine, ep)) {
 		log_err("can not create push routine\n");
 		return -1;
 	}
 	
-	if (0 != pthread_create(&pop_tid, NULL, (void *)lbus_udp_pop_routine, ep)){
+	if (0 != pthread_create(&pop_tid, NULL, (void *)lbus_udp_pop_routine, ep)) {
 		log_err("can not create pop routine\n");
 		return -1;
 	}
 	
 	err = socket_bind(&ep->iface);
-	if(err < 0){
+	if (err < 0) {
 		lbus_endpoint_destroy(ep);
 		return -1;
 	}
@@ -328,7 +332,7 @@ int lbus_direct_send(lbus_endpoint_t *ep, void *msg)
 	socket_info_t iface = {0};
 
 	if (ep->iface.fd <= 0 || m->iface.des.sin_port <= 0) {
-		log_err("invalid param\n");
+		log_err("Invalid param: fd %d port %d\n", ep->iface.fd, ntohs(m->iface.des.sin_port));
 		return -1;
 	}
 
@@ -337,7 +341,7 @@ int lbus_direct_send(lbus_endpoint_t *ep, void *msg)
 	iface.port = ntohs(m->iface.des.sin_port);
 	
 	nbyte = socket_udp_send(&iface, m, LMSG_HEADER_SIZE + m->size);
-	if(nbyte < 0)
+	if (nbyte < 0)
 		log_err("error: %s\n", strerror(errno));
 
 	return nbyte;
@@ -348,10 +352,8 @@ int lbus_send_ping(lbus_endpoint_t *ep)
 	int err;
 	lbus_msg_t *msg = NULL;
 
-	if (ep->bond) {
-		log_debug("Already bonded\n");
+	if (ep->bond)
 		return 0;
-	}
 	
 	msg = lbus_msg_new(sizeof(lbus_endpoint_t));
 	if (!msg) {
@@ -373,13 +375,13 @@ int lbus_send_pong(lbus_endpoint_t *ep, void *src_msg)
 	int err;
 	lbus_msg_t *msg = NULL;
 	
-	if(!ep){
-		log_err("invalid pointer\n");
+	if (!ep) {
+		log_err("Invalid pointer\n");
 		return -1;
 	}
 	
 	msg = lbus_msg_new(sizeof(lbus_endpoint_t));
-	if(!msg){
+	if (!msg) {
 		log_err("Failed to alloc msg buffer\n");
 		return -1;
 	}
@@ -402,14 +404,14 @@ int lbus_route_table_update(lbus_msg_t *msg)
 	int value = ntohs(bk->ep.iface.src.sin_port);
 	char port[24] = {0};
 	
-	if(!value || value == LBUS_UDP_PORT){
+	if (!value || value == LBUS_UDP_PORT) {
 		log_debug("Ignoring invalid port\n");
 		return -1;
 	}
 	
 	pthread_mutex_lock(&bk->mtx);
-	sprintf(port, "%d\n", ntohs(bk->ep.iface.src.sin_port));
-	log_debug("port: %s\n", port);
+	sprintf(port, "%d", ntohs(bk->ep.iface.src.sin_port));
+	log_debug("Handling port: %s\n", port);
 	
 	target = kvlist_get(&bk->route_table, port);
 	if (target) {
@@ -426,6 +428,7 @@ int lbus_route_table_update(lbus_msg_t *msg)
 	memcpy(ep, &bk->ep, sizeof(lbus_endpoint_t));
 	kvlist_set(&bk->route_table, port, (void *)ep);
 	list_add_tail(&ep->entry, &bk->peers);
+	log_info("new port added: %s\n", port);
 	
 out:
 	pthread_mutex_unlock(&bk->mtx);
@@ -443,29 +446,30 @@ int lbus_dispatch_callback(void *msg, void *userdata)
 	//log_debug("m->event: 0x%08X\n", m->event);
 	//log_debug("m->size: %d\n", m->size);
 	
-	if(!bk->running){
-		log_err("invalid broker\n");
+	if (!bk->running) {
+		log_err("Invalid broker\n");
 		return -1;
 	}
 	
 	/* Respond to LBUS event directly */
-	if(lsvc_valid_event(m->event, LSVC_LBUS_EVENT))
+	if (lsvc_valid_event(m->event, LSVC_LBUS_EVENT))
 		return lsvc_thread_call(NULL, m);
-
-	if (m->flags == LMSG_RESPONSE) {
-		log_debug("handle lbus response 0x%08X\n", m->event);
+	
+	if (m->flags & LMSG_RESPONSE) {
+		log_err("Handle lbus response 0x%08X\n", m->event);
 		return lbus_direct_send(&bk->ep, m);
 	}
 	
 	/* Broadcast message to each recorded endpoint */
-	list_for_each_entry_safe(target,tmp, &bk->peers, entry){
+	list_for_each_entry_safe(target,tmp, &bk->peers, entry) {
+		memcpy(&m->iface.des, (struct sockaddr*)&target->iface.src, sizeof(target->iface.src));
 		nbyte = sendto(bk->ep.iface.fd, m, LMSG_HEADER_SIZE + m->size, 
 						MSG_DONTWAIT | MSG_NOSIGNAL, 
-						(struct sockaddr*)&target->iface.src, sizeof(target->iface.src));
-		if(nbyte < 0)
-			log_err("Failed to send: port %d\n", target->iface.src.sin_port);
-		if(nbyte > 0)
-			log_debug("sent port: %d\n", target->iface.src.sin_port);
+						(struct sockaddr*)&m->iface.des, sizeof(m->iface.des));
+		if (nbyte < 0)
+			log_err("Failed to send: port %d\n", ntohs(m->iface.des.sin_port));
+		if (nbyte > 0)
+			log_debug("Msg sent to port: %d\n", ntohs(m->iface.des.sin_port));
 	}
 	
 	return 0;
@@ -488,8 +492,8 @@ int lbus_svc_init(void *runtime)
 	bk->dispatch = lbus_dispatch_callback;
 	bk->runtime = runtime;
 	err = lbus_broker_create(bk);
-	if(err < 0){
-		log_err("failed to create broker, skip\n");
+	if (err < 0) {
+		log_err("Failed to create broker, skip\n");
 		lbus_endpoint_destroy(&bk->ep);
 		return -1;
 	}
@@ -519,7 +523,7 @@ int lbus_svc_getopt(int argc, const char *argv[], void **msg)
 
 	// m = msg;
 	// ctl = m->payload;
-	// while((opt = getopt(argc, (void *)argv, "m:")) != -1){
+	// while((opt = getopt(argc, (void *)argv, "M:")) != -1) {
 	// 	switch (opt) {
 	// 		case 'l':
 	// 			m->event = LOG_EV_SET_LEVEL;
@@ -543,14 +547,14 @@ int lbus_svc_ioctl(void *runtime, void *_msg)
 	lbus_broker_t *bk = &broker;
 	log_debug("event 0x%08X\n", msg->event);
 	
-	switch(msg->event){
+	switch(msg->event) {
 		case LBUS_EV_PING:
-			if(!lbus_route_table_update(msg))
+			if (!lbus_route_table_update(msg))
 				err = lbus_send_pong(&bk->ep, msg);
 		break;
 	}
 	
-	if(err < 0)
+	if (err < 0)
 		log_err("ev 0x%08X\n", msg->event);
 	
 	return err;
