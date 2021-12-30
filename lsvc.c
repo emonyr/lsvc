@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <unistd.h>
-#include <assert.h>
 #include <pthread.h>
 #include <string.h>
 
@@ -12,7 +11,7 @@
 #include "lsvc.h"
 
 
-lbus_endpoint_t self_endpoint = {0};
+static lbus_endpoint_t self_endpoint = {0};
 static int saved_argc = 0;
 static const char **saved_argv = NULL;
 char *dummy_argv[] = {"lsvc"};
@@ -102,6 +101,7 @@ int lsvc_handle_bus_call_routine(void *msg, void *userdata)
 	log_debug("m->event: 0x%08X\n", m->event);
 	log_debug("m->size: %d\n", m->size);
 	log_debug("m->flags: %d\n", m->flags);
+	printf("lsvc_handle_bus_call_routine %d , %d \n", ntohs(m->iface.src.sin_port), ntohs(m->iface.des.sin_port));
 	
 	return lsvc_service_ioctl(m);
 }
@@ -172,12 +172,12 @@ int lsvc_shell_routine(void *msg, void *userdata)
 void *lsvc_runtime_init(void)
 {
 	int err;
-
+	log_info("saved_argc: %d\n", saved_argc);
 	if (!saved_argv) {
 		saved_argv = dummy_argv;
 		saved_argc = ARRAY_SIZE(dummy_argv);
 	}
-	
+	log_info("saved_argc: %d\n", saved_argc);
 	if (saved_argc < 2) {
 		self_endpoint.recv_cb = lsvc_handle_bus_call_routine;
 	}else{
@@ -268,9 +268,10 @@ void lsvc_shutdown(void *runtime)
 }
 
 int lsvc_event_send(int event, unsigned char *data, unsigned int size, 
-						unsigned int flags, const void *src_msg)
+						unsigned int flags, const void *_msg)
 {
 	int err;
+	lbus_msg_t *src_msg = _msg;
 	lbus_msg_t *msg = lbus_msg_new(size);
 	if (!msg) {
 		log_err("Failed to alloc msg buffer\n");
@@ -282,7 +283,15 @@ int lsvc_event_send(int event, unsigned char *data, unsigned int size,
 	msg->flags = flags;
 
 	if ((msg->flags & LMSG_RESPONSE) && src_msg) {
-		memcpy(&msg->iface.des, &((lbus_msg_t *)src_msg)->iface.des, sizeof(((lbus_msg_t *)src_msg)->iface.des));
+		{
+			socket_info_t *iface = &msg->iface;
+			printf("%s %d %d , %d \n", __func__, __LINE__, ntohs(iface->src.sin_port), ntohs(iface->des.sin_port));
+		}
+		memcpy(&msg->iface.des, &src_msg->iface.des, sizeof(src_msg->iface.des));
+		{
+			socket_info_t *iface = &msg->iface;
+			printf("%s %d %d , %d \n", __func__, __LINE__, ntohs(iface->src.sin_port), ntohs(iface->des.sin_port));
+		}
 	}
 	
 	if (msg->flags & LMSG_BUS_CALL) {

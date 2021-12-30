@@ -32,7 +32,6 @@ typedef struct {
 #define LMSG_MAX_SIZE 65535
 #define LMSG_HEADER_SIZE (sizeof(lbus_msg_t))
 #define LMSG_MAX_DATA_SIZE (LMSG_MAX_SIZE - LMSG_HEADER_SIZE)
-#define LMSG_GETOPT_BUFSIZE 64
 
 typedef struct{
 	char name[32];

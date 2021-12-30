@@ -66,17 +66,16 @@ int lbus_msg_broadcast(lbus_endpoint_t *ep,void *msg)
 {
 	int nbyte;
 	lbus_msg_t *m = msg;
-	socket_info_t iface = {0};
 	
 	if (!m->msg_id)
 		m->msg_id = time(NULL);
 	
 	pthread_mutex_lock(&ep->mtx);
-	iface.fd = ep->iface.fd,
-	sprintf(iface.addr, "%s", ep->iface.addr);
-	iface.port = LBUS_UDP_PORT,	// sendto broker port
+	m->iface.fd = ep->iface.fd,
+	sprintf(m->iface.addr, "%s", ep->iface.addr);
+	m->iface.port = LBUS_UDP_PORT,	// sendto broker port
 	
-	nbyte = socket_udp_send(&iface, m, LMSG_HEADER_SIZE + m->size);
+	nbyte = socket_udp_send(&m->iface, m, LMSG_HEADER_SIZE + m->size);
 	if (nbyte < 0)
 		log_err("error: %s\n", strerror(errno));
 	pthread_mutex_unlock(&ep->mtx);
@@ -157,8 +156,13 @@ void lbus_udp_push_routine(void *data)
 		
 		nbyte = socket_udp_recv(&ep->iface, m, LMSG_MAX_SIZE);
 		if (nbyte > 0) {
-			//log_debug("### recv nbyte %d\n\n",nbyte);
-			memcpy(&m->iface, &ep->iface, sizeof(m->iface));
+			// log_debug("### recv nbyte %d\n\n",nbyte);
+
+			/* 
+			 * Copy endpoint source interface info into message, 
+			 * so we can receive response from broker.
+			 */
+			memcpy(&m->iface.src, &ep->iface.src, sizeof(m->iface.src));
 			lbus_push_data(ep,m,nbyte);
 		}
     }
@@ -196,11 +200,9 @@ void lbus_udp_pop_routine(void *data)
 		nbyte = lbus_pop_data(ep, &m);
 		if (nbyte > 0 && m && ep->recv_cb) {
 			// log_debug("Pop nbyte %d\n", nbyte);
-			log_warn("%s pop event: 0x%08X\n", ep->name, m->event);
-			if (m->event != LBUS_EV_PING && !ep->bond) {
-				if(lbus_try_bond(m, ep) == -1) {
-					lbus_push_data(ep,m,nbyte);	// Not yet bonded, push back msg to the queue
-				}
+			log_warn("%s m->event: 0x%08X\n", ep->name, m->event);
+			if (!ep->bond && lbus_try_bond(m, ep) == -1) {
+				lbus_push_data(ep,m,nbyte);	// Not yet bonded, push back msg to the queue
 			}else{
 				m->payload = lbus_payload_get(m);
 				ep->recv_cb(m, ep->userdata);
@@ -339,6 +341,10 @@ int lbus_direct_send(lbus_endpoint_t *ep, void *msg)
 	iface.fd = ep->iface.fd;
 	sprintf(iface.addr, "%s", ep->iface.addr);
 	iface.port = ntohs(m->iface.des.sin_port);
+	{
+		socket_info_t *iface = &m->iface;
+		printf("%s %d %d , %d \n", __func__, __LINE__, ntohs(iface->src.sin_port), ntohs(iface->des.sin_port));
+	}
 	
 	nbyte = socket_udp_send(&iface, m, LMSG_HEADER_SIZE + m->size);
 	if (nbyte < 0)
@@ -370,9 +376,10 @@ int lbus_send_ping(lbus_endpoint_t *ep)
 	return err;
 }
 
-int lbus_send_pong(lbus_endpoint_t *ep, void *src_msg)
+int lbus_send_pong(lbus_endpoint_t *ep, void *_msg)
 {
 	int err;
+	lbus_msg_t *src_msg = _msg;
 	lbus_msg_t *msg = NULL;
 	
 	if (!ep) {
@@ -388,7 +395,7 @@ int lbus_send_pong(lbus_endpoint_t *ep, void *src_msg)
 	
 	msg->event = LBUS_EV_PONG;
 	memcpy(msg->payload, ep, sizeof(lbus_endpoint_t));
-	memcpy(&msg->iface.des, &((lbus_msg_t *)src_msg)->iface.src, sizeof(msg->iface.des));
+	memcpy(&msg->iface.des, &src_msg->iface.src, sizeof(msg->iface.des));
 	
 	err = lbus_direct_send(ep, msg);
 	lbus_msg_destroy(msg);
@@ -410,6 +417,7 @@ int lbus_route_table_update(lbus_msg_t *msg)
 	}
 	
 	pthread_mutex_lock(&bk->mtx);
+	memcpy(&msg->iface.src, &bk->ep.iface.src, sizeof(msg->iface.src));
 	sprintf(port, "%d", ntohs(bk->ep.iface.src.sin_port));
 	log_debug("Handling port: %s\n", port);
 	
@@ -455,6 +463,7 @@ int lbus_dispatch_callback(void *msg, void *userdata)
 	if (lsvc_valid_event(m->event, LSVC_LBUS_EVENT))
 		return lsvc_thread_call(NULL, m);
 	
+	
 	if (m->flags & LMSG_RESPONSE) {
 		log_err("Handle lbus response 0x%08X\n", m->event);
 		return lbus_direct_send(&bk->ep, m);
@@ -462,14 +471,14 @@ int lbus_dispatch_callback(void *msg, void *userdata)
 	
 	/* Broadcast message to each recorded endpoint */
 	list_for_each_entry_safe(target,tmp, &bk->peers, entry) {
-		memcpy(&m->iface.des, (struct sockaddr*)&target->iface.src, sizeof(target->iface.src));
+		memcpy(&m->iface.des, &m->iface.src, sizeof(m->iface.des));
 		nbyte = sendto(bk->ep.iface.fd, m, LMSG_HEADER_SIZE + m->size, 
 						MSG_DONTWAIT | MSG_NOSIGNAL, 
-						(struct sockaddr*)&m->iface.des, sizeof(m->iface.des));
+						(struct sockaddr*)&target->iface.src, sizeof(target->iface.src));
 		if (nbyte < 0)
-			log_err("Failed to send: port %d\n", ntohs(m->iface.des.sin_port));
+			log_err("Failed to send: port %d\n", ntohs(target->iface.src.sin_port));
 		if (nbyte > 0)
-			log_debug("Msg sent to port: %d\n", ntohs(m->iface.des.sin_port));
+			log_debug("Msg sent to port: %d\n", ntohs(target->iface.src.sin_port));
 	}
 	
 	return 0;
