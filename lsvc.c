@@ -244,7 +244,8 @@ int lsvc_handle_sys_command(int argc, const char *argv[])
 		}
 		
 		// use lsvc_bus_call since it's a different process
-		err = lsvc_bus_call(r, msg);
+		if (msg) 
+			err = lsvc_bus_call(r, msg);
 		break;
 	}
 	
