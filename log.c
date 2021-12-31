@@ -69,7 +69,7 @@ int log_impl(FILE *output, int level, const char* filename, int line,
 	if (!gmtime_r(&cur_time, &_tm))
 		return -1;
 	
-	fprintf(output, "%s[%02d-%02d-%02d %02d:%02d:%02d.%03d][%c][%s:%d] %s() ", 
+	fprintf(output, "%s[%02d-%02d-%02d %02d:%02d:%02d.%03d][%c][%s:%d] ", 
 						log_level_color[level],
 						_tm.tm_year + 1900,
 						_tm.tm_mon + 1,
@@ -79,7 +79,7 @@ int log_impl(FILE *output, int level, const char* filename, int line,
 						(unsigned int)_tv.tv_usec/1000, 
 						log_level_ch[level],
 						file_get_striped_name(filename), 
-						line, function);
+						line);
 	
 	va_list arg;
 	va_start(arg, format);
@@ -141,6 +141,7 @@ int log_set_level(log_level_t level)
 
 int log_svc_init(void *runtime)
 {
+	log_set_level(LOG_LEVEL_INFO);
 	return 0;
 }
 
@@ -196,7 +197,6 @@ int log_svc_ioctl(void *runtime, void *_msg)
 	int err = -1;
 	lbus_msg_t *msg = _msg;
 	log_ctl_t *ctl = msg->payload;
-	log_debug("event 0x%08X\n", msg->event);
 	
 	switch(msg->event) {
 		case LOG_EV_GET_STATE:

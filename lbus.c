@@ -200,7 +200,7 @@ void lbus_udp_pop_routine(void *data)
 		nbyte = lbus_pop_data(ep, &m);
 		if (nbyte > 0 && m && ep->recv_cb) {
 			// log_debug("Pop nbyte %d\n", nbyte);
-			log_warn("%s m->event: 0x%08X\n", ep->name, m->event);
+			// log_warn("%s m->event: 0x%08X\n", ep->name, m->event);
 			if (!ep->bond && lbus_try_bond(m, ep) == -1) {
 				lbus_push_data(ep,m,nbyte);	// Not yet bonded, push back msg to the queue
 			}else{
@@ -341,10 +341,6 @@ int lbus_direct_send(lbus_endpoint_t *ep, void *msg)
 	iface.fd = ep->iface.fd;
 	sprintf(iface.addr, "%s", ep->iface.addr);
 	iface.port = ntohs(m->iface.des.sin_port);
-	{
-		socket_info_t *iface = &m->iface;
-		printf("%s %d %d , %d \n", __func__, __LINE__, ntohs(iface->src.sin_port), ntohs(iface->des.sin_port));
-	}
 	
 	nbyte = socket_udp_send(&iface, m, LMSG_HEADER_SIZE + m->size);
 	if (nbyte < 0)
@@ -465,12 +461,16 @@ int lbus_dispatch_callback(void *msg, void *userdata)
 	
 	
 	if (m->flags & LMSG_RESPONSE) {
-		log_err("Handle lbus response 0x%08X\n", m->event);
+		log_debug("Handle lbus response 0x%08X\n", m->event);
 		return lbus_direct_send(&bk->ep, m);
 	}
 	
 	/* Broadcast message to each recorded endpoint */
 	list_for_each_entry_safe(target,tmp, &bk->peers, entry) {
+		/* 
+		 * Copy message source interface info into destination, 
+		 * so services can send response to it.
+		 */
 		memcpy(&m->iface.des, &m->iface.src, sizeof(m->iface.des));
 		nbyte = sendto(bk->ep.iface.fd, m, LMSG_HEADER_SIZE + m->size, 
 						MSG_DONTWAIT | MSG_NOSIGNAL, 
@@ -554,7 +554,6 @@ int lbus_svc_ioctl(void *runtime, void *_msg)
 	int err;
 	lbus_msg_t *msg = _msg;
 	lbus_broker_t *bk = &broker;
-	log_debug("event 0x%08X\n", msg->event);
 	
 	switch(msg->event) {
 		case LBUS_EV_PING:

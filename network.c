@@ -400,7 +400,6 @@ int network_svc_ioctl(void *runtime, void *_msg)
 	int err = -1;
 	lbus_msg_t *msg = _msg;
 	network_ctl_t *ctl = msg->payload;
-	log_info("event 0x%08X\n", msg->event);
 
 	switch(msg->event) {
 		case NETWORK_EV_GET_STATE:

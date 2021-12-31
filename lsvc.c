@@ -53,6 +53,7 @@ int lsvc_service_ioctl(void *_msg)
 		
 	for(svc=r->svc_list; *svc; svc++) {
 		if (lsvc_valid_event(msg->event, (*svc)->ev_base)) {
+			log_info("------ handling %s 0x%08X ------\n", (*svc)->name, msg->event);
 			if ((*svc)->ioctl) {
 				err = (*svc)->ioctl(r, msg);
 				if (err < 0)
@@ -79,7 +80,8 @@ int lsvc_thread_call(void *runtime, void *msg)
 		return -1;
 	}
 	
-	log_debug("\n\n------ lsvc thread call ------\n");
+	log_debug("------ lsvc thread call ------\n");
+	log_debug("ep->name: %s\n", ((lbus_endpoint_t *)r->priv)->name);
 	log_debug("m->event: 0x%08X\n", m->event);
 	log_debug("m->size: %d\n", m->size);
 	log_debug("m->flags: %d\n", m->flags);
@@ -90,18 +92,25 @@ int lsvc_thread_call(void *runtime, void *msg)
 int lsvc_handle_bus_call_routine(void *msg, void *userdata)
 {
 	lbus_msg_t *m = msg;
-	//lsvc_runtime_t *r = userdata;
+	lsvc_runtime_t *r = NULL;
+
+	if (userdata) {
+		r = userdata;
+	}else if (!(r = lsvc_runtime_get())) {
+		log_err("Invalid runtime\n");
+		return -1;
+	}
 	
 	if (!m || m->flags & LMSG_RESPONSE) {
 		log_err("Invalid msg\n");
 		return -1;
 	}
 	
-	log_debug("\n\n------ lsvc bus call ------\n");
+	log_debug("------ lsvc bus call ------\n");
+	log_debug("ep->name: %s\n", ((lbus_endpoint_t *)r->priv)->name);
 	log_debug("m->event: 0x%08X\n", m->event);
 	log_debug("m->size: %d\n", m->size);
 	log_debug("m->flags: %d\n", m->flags);
-	printf("lsvc_handle_bus_call_routine %d , %d \n", ntohs(m->iface.src.sin_port), ntohs(m->iface.des.sin_port));
 	
 	return lsvc_service_ioctl(m);
 }
@@ -172,17 +181,16 @@ int lsvc_shell_routine(void *msg, void *userdata)
 void *lsvc_runtime_init(void)
 {
 	int err;
-	log_info("saved_argc: %d\n", saved_argc);
+	
 	if (!saved_argv) {
 		saved_argv = dummy_argv;
 		saved_argc = ARRAY_SIZE(dummy_argv);
 	}
-	log_info("saved_argc: %d\n", saved_argc);
+	
 	if (saved_argc < 2) {
 		self_endpoint.recv_cb = lsvc_handle_bus_call_routine;
 	}else{
 		self_endpoint.recv_cb = lsvc_shell_routine;
-		// self_endpoint.bond = 1;	//hack for shell command, bypass ping event
 	}
 	
 	self_endpoint.userdata = &g_lsvc;
@@ -283,15 +291,11 @@ int lsvc_event_send(int event, unsigned char *data, unsigned int size,
 	msg->flags = flags;
 
 	if ((msg->flags & LMSG_RESPONSE) && src_msg) {
-		{
-			socket_info_t *iface = &msg->iface;
-			printf("%s %d %d , %d \n", __func__, __LINE__, ntohs(iface->src.sin_port), ntohs(iface->des.sin_port));
-		}
+		/* 
+		 * Broker put original source info into src_msg->iface.des,
+		 * now we use it to send back response
+		 */
 		memcpy(&msg->iface.des, &src_msg->iface.des, sizeof(src_msg->iface.des));
-		{
-			socket_info_t *iface = &msg->iface;
-			printf("%s %d %d , %d \n", __func__, __LINE__, ntohs(iface->src.sin_port), ntohs(iface->des.sin_port));
-		}
 	}
 	
 	if (msg->flags & LMSG_BUS_CALL) {
