@@ -14,6 +14,6 @@ cd ./lsvc/
 make clean
 make
 source common.env
-./lsvc &
-./lsvc log -l 4
+lsvc &
+lsvc log -v
 ```
