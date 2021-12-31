@@ -9,7 +9,7 @@ extern void lsvc_main_loop(void);
 
 int main(int argc, const char *argv[])
 {	
-	if (argc > 2) {
+	if (argc > 1) {
 		lsvc_handle_sys_command(argc, argv);
 		lsvc_main_loop();
 		return 0;

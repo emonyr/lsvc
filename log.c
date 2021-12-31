@@ -129,7 +129,7 @@ int log_set_level(log_level_t level)
 		return -1;
 	
 	s->level = level;
-	log_info("Log level changed to: %s\n", log_level_str[s->level]);
+	log_fatal("Log level changed to: %s\n", log_level_str[s->level]);
 	
 	return 0;
 }

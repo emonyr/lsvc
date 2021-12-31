@@ -290,7 +290,7 @@ int lbus_endpoint_create(lbus_endpoint_t *ep)
 		return 1;
 	}
 	
-	sprintf(ep->iface.addr, "127.0.0.1");
+	sprintf(ep->iface.addr, "0.0.0.0");
 	
 	err = socket_udp_init(&ep->iface);
 	if (err < 0) {
