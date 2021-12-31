@@ -79,6 +79,37 @@ void *proto_str_get(proto_cache_t *c, const char *path)
 	return NULL;
 }
 
+int proto_str_check(proto_cache_t *c, const char *path, 
+											const char *expect, int strict)
+{
+	int match;
+	char *text;
+	
+	if (!c || !path || !expect) {
+		fprintf(stderr, "Invalid param\n");
+		return -1;
+	}
+	
+	text = proto_str_get(c, path);
+	if (!text) {
+		fprintf(stderr, "Invalid string path: %s\n", path);
+		return -1;
+	}
+	
+	if (strict) {
+		match = (text && (strcmp(text, expect) == 0));
+	}else{
+		match = (text && strstr(text, expect));
+	}
+	
+	if (!match) {
+		fprintf(stderr, "%s(expect) != %s(payload)\n", expect, text ? text : "NULL");
+		return -1;
+	}
+	
+	return 0;
+}
+
 void *proto_next_node(const char *path, char *node_name)
 {
 	int i=0;
@@ -237,37 +268,6 @@ void *proto_json_str_get(proto_cache_t *c, const char *path)
 		return NULL;
 
 	return n->valuestring;
-}
-
-int proto_json_str_check(proto_cache_t *c, const char *path, 
-											const char *expect, int strict)
-{
-	int match;
-	char *text;
-	
-	if (!c || !path || !expect) {
-		fprintf(stderr, "Invalid param\n");
-		return -1;
-	}
-	
-	text = proto_json_str_get(c, path);
-	if (!text) {
-		fprintf(stderr, "Invalid string path: %s\n", path);
-		return -1;
-	}
-	
-	if (strict) {
-		match = (text && (strcmp(text, expect) == 0));
-	}else{
-		match = (text && strstr(text, expect));
-	}
-	
-	if (!match) {
-		fprintf(stderr, "Not expect value: %s - %s\n", expect, text ? text : "NULL");
-		return -1;
-	}
-	
-	return 0;
 }
 
 int proto_json_str_add(proto_cache_t *c, const char *path, 
