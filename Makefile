@@ -1,7 +1,10 @@
 # Commond variable
 CC = /usr/bin/env gcc
-SRC_DIR = .
-OUTPUT_DIR := .
+
+WORK_DIR := .
+SRC_DIR = $(WORK_DIR) $(WORK_DIR)/tools
+OUTPUT_DIR := ./out
+VPATH= $(SRC_DIR)
 
 MODULE_NAME = lsvc
 LIB_TARGET = $(OUTPUT_DIR)/lib$(MODULE_NAME).so
@@ -19,22 +22,25 @@ LIB_CFLAGS := -fPIC -shared -Wall -rdynamic -Wno-discarded-qualifiers \
 LIB_LDFLAGS := -fPIC -L$(OUTPUT_DIR) -l$(MODULE_NAME) -lpthread -lrt
 
 # C source code files that are required
-INCDIR = -I$(SRC_DIR) -I$(SRC_DIR)/tools
-CSRC := ${wildcard $(SRC_DIR)/*.c} ${wildcard $(SRC_DIR)/tools/*.c}
+INCDIR = $(addprefix -I, $(SRC_DIR))
+CSRC := $(foreach dir, $(SRC_DIR), $(wildcard $(dir)/*.c))
 
 # C obj files generated from source code
-COBJ := $(CSRC:%.c=%.o)
-LIB_COBJ := $(filter-out $(SRC_DIR)/main.o, $(COBJ))
+COBJ := $(addprefix $(OUTPUT_DIR)/, $(notdir $(CSRC:%.c=%.o)))
+LIB_COBJ := $(filter-out $(OUTPUT_DIR)/main.o, $(COBJ))
 
 # Build rule for the main program
-all: $(TARGETS)
+all: build_prepare $(TARGETS)
 
-%.o:%.c
+build_prepare:
+	mkdir -p $(OUTPUT_DIR)
+
+$(OUTPUT_DIR)/%.o: %.c
 	$(CC) $(LIB_CFLAGS) -c -o $@ $< $(INCDIR)
 
-$(LIB_TARGET):$(LIB_COBJ)
+$(LIB_TARGET): $(LIB_COBJ)
 	$(CC) $(LIB_CFLAGS) -o $@ $^
-$(EXE_TARGET): $(SRC_DIR)/main.o $(LIB_TARGET)
+$(EXE_TARGET): $(OUTPUT_DIR)/main.o $(LIB_TARGET)
 	$(CC) $(CFLAGS) -o $@ $^ $(LIB_LDFLAGS)
 
 clean: 
