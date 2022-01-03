@@ -3,6 +3,7 @@
 #include <stdlib.h>
 
 #include "cJSON.h"
+#include "mem.h"
 #include "proto.h"
 
 #define MAX_NODE_NAME_LEN 128
@@ -154,7 +155,7 @@ proto_cache_t *proto_json_init(void *old_cache, char *context)
 	}
 	
 	if (!c) {
-		c = malloc(sizeof(proto_cache_t));
+		c = mem_alloc(sizeof(proto_cache_t));
 		if (!c) {
 			fprintf(stderr, "Failed to alloc memory\n");
 			goto out;

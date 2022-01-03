@@ -7,10 +7,11 @@
 #include <time.h>
 
 #include "log.h"
-#include "thread.h"
+#include "mem.h"
+#include "parallel.h"
 #include "kvlist.h"
 
-static thread_spin_t fastlock = THREAD_SPINLOCK_INITIALIZER;
+static parallel_spin_t fastlock = PARALLEL_SPINLOCK_INITIALIZER;
 static struct kvlist *timerlist = NULL;
 
 typedef void (timeout_handler)(void* arg, timer_t timer_id);
@@ -36,7 +37,7 @@ void timer_handler_f(union sigval v)
 	utils_timer_t *t;
 	char timer_str[32] = {0};
 	
-	thread_spin_lock(&fastlock);	
+	parallel_spin_lock(&fastlock);	
 	if(v.sival_ptr){		
 		t = (utils_timer_t *)v.sival_ptr; 
 		sprintf(timer_str, "%x", (unsigned int)t->timerid);
@@ -47,17 +48,17 @@ void timer_handler_f(union sigval v)
 			}
 			if(!t->repeat){
 				timer_delete(t->timerid);
-				free(t);
+				mem_free(t);
 				kvlist_delete(timerlist, timer_str);
 			}
 		}
 		else {
 			/* utils_timer_stop called */
 			timer_delete(t->timerid);
-			free(t);
+			mem_free(t);
 		}
 	}	
-	thread_spin_unlock(&fastlock);
+	parallel_spin_unlock(&fastlock);
 
 }
 
@@ -71,10 +72,10 @@ int utils_timer_stop(utils_timer_t *timer)
 	sprintf(timer_str, "%x", (unsigned int)timer->timerid);
 	
 	/* delete timer from timerlist */
-	thread_spin_lock(&fastlock);
+	parallel_spin_lock(&fastlock);
 	kvlist_delete(timerlist, timer_str);	
 	// log_debug("Stop timer 0x%x done\n", timer);	
-	thread_spin_unlock(&fastlock);
+	parallel_spin_unlock(&fastlock);
 	
 	return 0;
 }
@@ -87,15 +88,15 @@ void *utils_timer_start(void *cb, void *arg,
 	
 	/* FIXME: there is a race condition here if start two timer from two threads at once */
 	if(timerlist == NULL){
-		timerlist = (struct kvlist *)malloc(sizeof(struct kvlist));
+		timerlist = (struct kvlist *)mem_alloc(sizeof(struct kvlist));
 		if(timerlist){
 			kvlist_init(timerlist, kvlist_strlen);
 		}		
 	}
 	
-	t = (utils_timer_t *)malloc(sizeof(utils_timer_t));
+	t = (utils_timer_t *)mem_alloc(sizeof(utils_timer_t));
 	if(!t){
-		log_err("Malloc memory error(%s)\n", strerror(errno));
+		log_err("mem_alloc memory error(%s)\n", strerror(errno));
 		return NULL;
 	}
 	memset(t, 0, sizeof(utils_timer_t));
@@ -125,9 +126,9 @@ void *utils_timer_start(void *cb, void *arg,
 	char timer_str[32] = {0};
 	sprintf(timer_str, "%x", (unsigned int)t->timerid);
 	
-	thread_spin_lock(&fastlock);
+	parallel_spin_lock(&fastlock);
 	kvlist_set(timerlist, timer_str, timer_str);	
-	thread_spin_unlock(&fastlock);
+	parallel_spin_unlock(&fastlock);
 	
 	// log_debug("Start timer:0x%x\n", t->timerid);
 	

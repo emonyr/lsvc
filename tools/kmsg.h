@@ -11,7 +11,7 @@ extern "C" {
  * 多线程安全的消息队列实现
  */
 
-#include "thread.h"
+#include "parallel.h"
 
 #define MAX_MSG_NUMBER  128
 
@@ -22,7 +22,7 @@ struct kmsg {
     unsigned char *data;
     int msg_number;
     int msg_part_len[MAX_MSG_NUMBER];
-    thread_spin_t lock;  
+    parallel_spin_t lock;  
 };
 
 

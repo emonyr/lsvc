@@ -6,7 +6,7 @@ extern "C" {
 #endif
 
 #include <stdio.h>
-#include "thread.h"
+#include "parallel.h"
 #include "lsvc.h"
 
 typedef enum {
@@ -25,7 +25,7 @@ typedef enum {
 
 typedef struct {
 	log_level_t level;
-	thread_spin_t lock;
+	parallel_spin_t lock;
 }__attribute__ ((packed))log_svc_state_t;
 
 typedef struct {

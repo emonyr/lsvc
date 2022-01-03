@@ -5,7 +5,6 @@
 #include <string.h>
 #include <errno.h>
 #include <time.h>
-#include <pthread.h>
 #include <arpa/inet.h>
 #include <assert.h>
 
@@ -70,7 +69,7 @@ int lbus_msg_broadcast(lbus_endpoint_t *ep,void *msg)
 	if (!m->msg_id)
 		m->msg_id = time(NULL);
 	
-	thread_spin_lock(&ep->lock);
+	parallel_spin_lock(&ep->lock);
 	m->iface.fd = ep->iface.fd,
 	sprintf(m->iface.addr, "%s", ep->iface.addr);
 	m->iface.port = LBUS_UDP_PORT,	// sendto broker port
@@ -78,7 +77,7 @@ int lbus_msg_broadcast(lbus_endpoint_t *ep,void *msg)
 	nbyte = socket_udp_send(&m->iface, m, LMSG_HEADER_SIZE + m->size);
 	if (nbyte < 0)
 		log_err("error: %s\n", strerror(errno));
-	thread_spin_unlock(&ep->lock);
+	parallel_spin_unlock(&ep->lock);
 	
 	return nbyte;
 }
@@ -89,12 +88,12 @@ int lbus_push_data(lbus_endpoint_t *ep, void *data, int size)
 	
 	struct kmsg *kqueue = ep->queue;
 	
-	thread_spin_lock(&ep->lock);
+	parallel_spin_lock(&ep->lock);
 	nbyte = kmsg_push(kqueue, data, size);
 	// log_debug("kmsg_push: nbyte %d kqueue->size %d\n", nbyte, kqueue->size);
 	if (!kqueue->size)
 		log_err("Invalid kqueue size %d\n", kqueue->size);
-	thread_spin_unlock(&ep->lock);
+	parallel_spin_unlock(&ep->lock);
 	
 	// log_debug("lbus_push_data: nbyte %d\n", nbyte);
 	
@@ -108,12 +107,12 @@ int lbus_pop_data(lbus_endpoint_t *ep, void **bucket)
 	if (!ep->running)
 		return -1;
 	
-	thread_spin_lock(&ep->lock);
+	parallel_spin_lock(&ep->lock);
 	
 	nbyte = kmsg_check(ep->queue);
 	//log_debug(">>>>>>>>>>>>>kmsg_check: nbyte %d\n", nbyte);
 	if (!nbyte || nbyte < LMSG_HEADER_SIZE) {
-		thread_spin_unlock(&ep->lock);
+		parallel_spin_unlock(&ep->lock);
 		return -1;
 	}
 	
@@ -121,7 +120,7 @@ int lbus_pop_data(lbus_endpoint_t *ep, void **bucket)
 	if (!(*bucket)) {
 		log_err("Failed to create new msg buffer\n");
 		sleep(1);
-		thread_spin_unlock(&ep->lock);
+		parallel_spin_unlock(&ep->lock);
 		return -1;
 	}
 	
@@ -130,10 +129,10 @@ int lbus_pop_data(lbus_endpoint_t *ep, void **bucket)
 		log_err("Invlid msg: nbyte %d\n", nbyte);
 		lbus_msg_destroy(*bucket);
 		*bucket = NULL;
-		thread_spin_unlock(&ep->lock);
+		parallel_spin_unlock(&ep->lock);
 		return -1;
 	}
-	thread_spin_unlock(&ep->lock);
+	parallel_spin_unlock(&ep->lock);
 	
 	//log_debug("nbyte %d\n", nbyte);
 	
@@ -147,9 +146,6 @@ void lbus_udp_push_routine(void *data)
     lbus_endpoint_t *ep = (lbus_endpoint_t *)data;
 	
 	assert(m);
-	
-	//log_debug("Init\n");
-	pthread_detach(pthread_self());
 
     while(ep->running) {
 		usleep(5000);	//sleep 5ms to release CPU
@@ -188,9 +184,6 @@ void lbus_udp_pop_routine(void *data)
 	int nbyte = 0;
 	lbus_msg_t *m = NULL;
     lbus_endpoint_t *ep = (lbus_endpoint_t *)data;
-	
-	//log_debug("Init\n");
-	pthread_detach(pthread_self());
 
 	ep->timer = utils_timer_start(lbus_send_ping, ep, 1, 2, 1);
 
@@ -285,14 +278,13 @@ int lbus_broker_create(lbus_broker_t *bk)
 int lbus_endpoint_create(lbus_endpoint_t *ep)
 {
 	int err = -1;
-	pthread_t pop_tid;
 	
 	if (ep->running) {
 		log_err("lbus endpoint already running\n");
 		return 1;
 	}
 	
-	sprintf(ep->iface.addr, "0.0.0.0");
+	sprintf(ep->iface.addr, "127.0.0.1");
 	
 	err = socket_udp_init(&ep->iface);
 	if (err < 0) {
@@ -301,31 +293,41 @@ int lbus_endpoint_create(lbus_endpoint_t *ep)
 	}
 	
 	INIT_LIST_HEAD(&ep->entry);
-	thread_spin_init(&ep->lock);
+	parallel_spin_init(&ep->lock);
 	ep->queue = lbus_queue_init();
 	if (!ep->queue) {
 		log_err("Failed to init queue\n");
-		socket_close(&ep->iface);
-		return -1;
+		goto failed;
 	}
 	
 	ep->running = 1;
-	if (0 != pthread_create(&ep->tid, NULL, (void *)lbus_udp_push_routine, ep)) {
-		log_err("can not create push routine\n");
-		return -1;
+	ep->t[0].routine = lbus_udp_push_routine;
+	ep->t[0].arg = ep;
+	err = parallel_thread_create(&ep->t[0]);
+	if (err) {
+		log_err("Failed to create push routine: err %d\n", err);
+		goto failed;
 	}
 	
-	if (0 != pthread_create(&pop_tid, NULL, (void *)lbus_udp_pop_routine, ep)) {
-		log_err("can not create pop routine\n");
-		return -1;
+	ep->running = 1;
+	ep->t[1].routine = lbus_udp_pop_routine;
+	ep->t[1].arg = ep;
+	err = parallel_thread_create(&ep->t[1]);
+	if (err) {
+		log_err("Failed to create pop routine: err %d\n", err);
+		goto failed;
 	}
 	
 	err = socket_bind(&ep->iface);
 	if (err < 0) {
-		lbus_endpoint_destroy(ep);
-		return -1;
+		log_err("Failed to bind endpoint socket\n");
+		goto failed;
 	}
 	
+	return err;
+
+failed:
+	lbus_endpoint_destroy(ep);
 	return err;
 }
 
@@ -414,7 +416,7 @@ int lbus_route_table_update(lbus_msg_t *msg)
 		return -1;
 	}
 	
-	thread_spin_lock(&bk->lock);
+	parallel_spin_lock(&bk->lock);
 	memcpy(&msg->iface.src, &bk->ep.iface.src, sizeof(msg->iface.src));
 	sprintf(port, "%d", ntohs(bk->ep.iface.src.sin_port));
 	log_debug("Handling port: %s\n", port);
@@ -437,7 +439,7 @@ int lbus_route_table_update(lbus_msg_t *msg)
 	log_info("new port added: %s\n", port);
 	
 out:
-	thread_spin_unlock(&bk->lock);
+	parallel_spin_unlock(&bk->lock);
 	return err;
 }
 
@@ -496,7 +498,7 @@ int lbus_svc_init(void *runtime)
 	int err;
 	lbus_broker_t *bk = &broker;
 	
-	thread_spin_init(&bk->lock);
+	parallel_spin_init(&bk->lock);
 	INIT_LIST_HEAD(&bk->peers);
 	kvlist_init(&bk->route_table, kvlist_strlen);
 	

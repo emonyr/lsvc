@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <assert.h>
 
+#include "mem.h"
 #include "kmsg.h"
 
 #define min(x, y) ((x) < (y) ? (x) : (y))
@@ -48,10 +49,10 @@ int kmsg_new(struct kmsg *buf, int size) {
         for (int i = 0; i < MAX_MSG_NUMBER; i++)
             buf->msg_part_len[i] = 0;
 
-        thread_spin_init(&buf->lock);
+        parallel_spin_init(&buf->lock);
 
         if (size > 0) {
-            buf->data = (unsigned char *)malloc(sizeof(char) * size);
+            buf->data = (unsigned char *)mem_alloc(sizeof(char) * size);
             if (!buf->data) ret = -1;
         }
 
@@ -66,7 +67,7 @@ int kmsg_delete(struct kmsg *buf) {
     int ret;
     if (buf) {
         if (buf->data) {
-            free(buf->data);
+            mem_free(buf->data);
             buf->data = NULL;
             memset(buf, 0, sizeof(struct kmsg));
             ret = 0;
@@ -81,24 +82,24 @@ int kmsg_delete(struct kmsg *buf) {
 
 int kmsg_push(struct kmsg *buf, const char *data, int len) {
 
-    thread_spin_lock(&buf->lock);  
+    parallel_spin_lock(&buf->lock);  
 
     unsigned int l;
 
     if(len <= 0){
         printf("data length invalid\n");
-        thread_spin_unlock(&buf->lock);
+        parallel_spin_unlock(&buf->lock);
         return 0;
     }
 
     if((buf->size - buf->in + buf->out) < len){
         printf("kmsg is full\n");
-        thread_spin_unlock(&buf->lock);
+        parallel_spin_unlock(&buf->lock);
         return 0;
     }
     if((buf->msg_number + 1) > MAX_MSG_NUMBER){
         printf("kmsg is full\n");
-        thread_spin_unlock(&buf->lock);
+        parallel_spin_unlock(&buf->lock);
         return 0;
     }
 
@@ -115,7 +116,7 @@ int kmsg_push(struct kmsg *buf, const char *data, int len) {
     buf->msg_part_len[buf->msg_number] = len;
     buf->msg_number += 1;
 
-    thread_spin_unlock(&buf->lock);  
+    parallel_spin_unlock(&buf->lock);  
 
     return len;
 }
@@ -134,7 +135,7 @@ int kmsg_pop(struct kmsg *buf, char *data) {
 
     if (buf->msg_number <= 0) return 0;
 
-    thread_spin_lock(&buf->lock);  
+    parallel_spin_lock(&buf->lock);  
 
     int len;
     unsigned int l;
@@ -153,7 +154,7 @@ int kmsg_pop(struct kmsg *buf, char *data) {
         buf->msg_part_len[i] = buf->msg_part_len[i + 1];
     }
 
-    thread_spin_unlock(&buf->lock);  
+    parallel_spin_unlock(&buf->lock);  
 
     return len;
 }

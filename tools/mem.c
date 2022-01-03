@@ -10,7 +10,7 @@ void * mem_alloc(unsigned int size)
 {
 	void *p = NULL;
 	
-	if(!size || size > MEM_MAX_SIZE)
+	if(!size)
 		return NULL;
 	
 	p = malloc(size);
