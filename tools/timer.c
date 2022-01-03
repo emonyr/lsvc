@@ -4,13 +4,13 @@
 #include <signal.h>
 #include <errno.h>
 #include <string.h>
-#include <pthread.h>
 #include <time.h>
 
 #include "log.h"
+#include "thread.h"
 #include "kvlist.h"
 
-static pthread_mutex_t fastmutex = PTHREAD_MUTEX_INITIALIZER;
+static thread_spin_t fastlock = THREAD_SPINLOCK_INITIALIZER;
 static struct kvlist *timerlist = NULL;
 
 typedef void (timeout_handler)(void* arg, timer_t timer_id);
@@ -36,7 +36,7 @@ void timer_handler_f(union sigval v)
 	utils_timer_t *t;
 	char timer_str[32] = {0};
 	
-	pthread_mutex_lock(&fastmutex);	
+	thread_spin_lock(&fastlock);	
 	if(v.sival_ptr){		
 		t = (utils_timer_t *)v.sival_ptr; 
 		sprintf(timer_str, "%x", (unsigned int)t->timerid);
@@ -57,7 +57,7 @@ void timer_handler_f(union sigval v)
 			free(t);
 		}
 	}	
-	pthread_mutex_unlock(&fastmutex);
+	thread_spin_unlock(&fastlock);
 
 }
 
@@ -71,10 +71,10 @@ int utils_timer_stop(utils_timer_t *timer)
 	sprintf(timer_str, "%x", (unsigned int)timer->timerid);
 	
 	/* delete timer from timerlist */
-	pthread_mutex_lock(&fastmutex);
+	thread_spin_lock(&fastlock);
 	kvlist_delete(timerlist, timer_str);	
 	// log_debug("Stop timer 0x%x done\n", timer);	
-	pthread_mutex_unlock(&fastmutex);
+	thread_spin_unlock(&fastlock);
 	
 	return 0;
 }
@@ -125,9 +125,9 @@ void *utils_timer_start(void *cb, void *arg,
 	char timer_str[32] = {0};
 	sprintf(timer_str, "%x", (unsigned int)t->timerid);
 	
-	pthread_mutex_lock(&fastmutex);
+	thread_spin_lock(&fastlock);
 	kvlist_set(timerlist, timer_str, timer_str);	
-	pthread_mutex_unlock(&fastmutex);
+	thread_spin_unlock(&fastlock);
 	
 	// log_debug("Start timer:0x%x\n", t->timerid);
 	

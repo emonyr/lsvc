@@ -70,7 +70,7 @@ int lbus_msg_broadcast(lbus_endpoint_t *ep,void *msg)
 	if (!m->msg_id)
 		m->msg_id = time(NULL);
 	
-	pthread_mutex_lock(&ep->mtx);
+	thread_spin_lock(&ep->lock);
 	m->iface.fd = ep->iface.fd,
 	sprintf(m->iface.addr, "%s", ep->iface.addr);
 	m->iface.port = LBUS_UDP_PORT,	// sendto broker port
@@ -78,7 +78,7 @@ int lbus_msg_broadcast(lbus_endpoint_t *ep,void *msg)
 	nbyte = socket_udp_send(&m->iface, m, LMSG_HEADER_SIZE + m->size);
 	if (nbyte < 0)
 		log_err("error: %s\n", strerror(errno));
-	pthread_mutex_unlock(&ep->mtx);
+	thread_spin_unlock(&ep->lock);
 	
 	return nbyte;
 }
@@ -89,12 +89,12 @@ int lbus_push_data(lbus_endpoint_t *ep, void *data, int size)
 	
 	struct kmsg *kqueue = ep->queue;
 	
-	pthread_mutex_lock(&ep->mtx);
+	thread_spin_lock(&ep->lock);
 	nbyte = kmsg_push(kqueue, data, size);
 	// log_debug("kmsg_push: nbyte %d kqueue->size %d\n", nbyte, kqueue->size);
 	if (!kqueue->size)
 		log_err("Invalid kqueue size %d\n", kqueue->size);
-	pthread_mutex_unlock(&ep->mtx);
+	thread_spin_unlock(&ep->lock);
 	
 	// log_debug("lbus_push_data: nbyte %d\n", nbyte);
 	
@@ -108,12 +108,12 @@ int lbus_pop_data(lbus_endpoint_t *ep, void **bucket)
 	if (!ep->running)
 		return -1;
 	
-	pthread_mutex_lock(&ep->mtx);
+	thread_spin_lock(&ep->lock);
 	
 	nbyte = kmsg_check(ep->queue);
 	//log_debug(">>>>>>>>>>>>>kmsg_check: nbyte %d\n", nbyte);
 	if (!nbyte || nbyte < LMSG_HEADER_SIZE) {
-		pthread_mutex_unlock(&ep->mtx);
+		thread_spin_unlock(&ep->lock);
 		return -1;
 	}
 	
@@ -121,19 +121,19 @@ int lbus_pop_data(lbus_endpoint_t *ep, void **bucket)
 	if (!(*bucket)) {
 		log_err("Failed to create new msg buffer\n");
 		sleep(1);
-		pthread_mutex_unlock(&ep->mtx);
+		thread_spin_unlock(&ep->lock);
 		return -1;
 	}
 	
 	nbyte = kmsg_pop(ep->queue, *bucket);
 	if (nbyte < 0) {
 		log_err("Invlid msg: nbyte %d\n", nbyte);
-		mem_free(*bucket);
+		lbus_msg_destroy(*bucket);
 		*bucket = NULL;
-		pthread_mutex_unlock(&ep->mtx);
+		thread_spin_unlock(&ep->lock);
 		return -1;
 	}
-	pthread_mutex_unlock(&ep->mtx);
+	thread_spin_unlock(&ep->lock);
 	
 	//log_debug("nbyte %d\n", nbyte);
 	
@@ -202,7 +202,8 @@ void lbus_udp_pop_routine(void *data)
 			// log_debug("Pop nbyte %d\n", nbyte);
 			// log_warn("%s m->event: 0x%08X\n", ep->name, m->event);
 			if (!ep->bond && lbus_try_bond(m, ep) == -1) {
-				lbus_push_data(ep,m,nbyte);	// Not yet bonded, push back msg to the queue
+				// Not yet bonded, push back msg to the queue
+				lbus_push_data(ep,m,nbyte);
 			}else{
 				m->payload = lbus_payload_get(m);
 				ep->recv_cb(m, ep->userdata);
@@ -221,10 +222,11 @@ void lbus_endpoint_destroy(lbus_endpoint_t *ep)
 	
 	ep->running = 0;
 	utils_timer_stop(ep->timer);
-	pthread_mutex_destroy(&ep->mtx);
 	socket_close(&ep->iface);
 	if (ep->queue)
 		kmsg_delete(ep->queue);
+	mem_free(ep->queue);
+	memset(ep, 0, sizeof(lbus_endpoint_t));
 }
 
 void *lbus_queue_init(void)
@@ -232,7 +234,7 @@ void *lbus_queue_init(void)
 	int err;
 	void *queue;
 	
-	queue = malloc(sizeof(struct kmsg));
+	queue = mem_alloc(sizeof(struct kmsg));
 	if (!queue) {
 		log_err("Failed to allocate queue buffer\n");
 		goto out;
@@ -241,7 +243,7 @@ void *lbus_queue_init(void)
 	err = kmsg_new(queue, MAX_MSG_NUMBER * 8192); //128 * 8192
     if (err < 0) {
 		log_err("Failed to create queue\n");
-		free(queue);
+		mem_free(queue);
 		queue = NULL;
 		goto out;
    	}
@@ -299,7 +301,7 @@ int lbus_endpoint_create(lbus_endpoint_t *ep)
 	}
 	
 	INIT_LIST_HEAD(&ep->entry);
-	pthread_mutex_init(&ep->mtx, NULL);
+	thread_spin_init(&ep->lock);
 	ep->queue = lbus_queue_init();
 	if (!ep->queue) {
 		log_err("Failed to init queue\n");
@@ -412,7 +414,7 @@ int lbus_route_table_update(lbus_msg_t *msg)
 		return -1;
 	}
 	
-	pthread_mutex_lock(&bk->mtx);
+	thread_spin_lock(&bk->lock);
 	memcpy(&msg->iface.src, &bk->ep.iface.src, sizeof(msg->iface.src));
 	sprintf(port, "%d", ntohs(bk->ep.iface.src.sin_port));
 	log_debug("Handling port: %s\n", port);
@@ -423,7 +425,7 @@ int lbus_route_table_update(lbus_msg_t *msg)
 		goto out;
 	}
 	
-	ep = malloc(sizeof(lbus_endpoint_t));
+	ep = mem_alloc(sizeof(lbus_endpoint_t));
 	if (!ep) {
 		err = -1;
 		goto out;
@@ -435,7 +437,7 @@ int lbus_route_table_update(lbus_msg_t *msg)
 	log_info("new port added: %s\n", port);
 	
 out:
-	pthread_mutex_unlock(&bk->mtx);
+	thread_spin_unlock(&bk->lock);
 	return err;
 }
 
@@ -494,7 +496,7 @@ int lbus_svc_init(void *runtime)
 	int err;
 	lbus_broker_t *bk = &broker;
 	
-	pthread_mutex_init(&bk->mtx, NULL);
+	thread_spin_init(&bk->lock);
 	INIT_LIST_HEAD(&bk->peers);
 	kvlist_init(&bk->route_table, kvlist_strlen);
 	

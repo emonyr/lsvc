@@ -1,6 +1,9 @@
 #ifndef __LSVC_H__
 #define __LSVC_H__
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 typedef enum {
 	LSVC_LBUS_EVENT = 0x10000000,
@@ -35,5 +38,9 @@ extern int lsvc_bus_call(void *runtime, void *msg);
 extern void lsvc_shutdown(void *runtime);
 extern int lsvc_event_send(int event, unsigned char *data, unsigned int size, 
 						unsigned int flags, const void *_msg);
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
 
 #endif /* __LSVC_H__ */

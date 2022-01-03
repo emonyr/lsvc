@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <assert.h>
+
 #include "kmsg.h"
 
 #define min(x, y) ((x) < (y) ? (x) : (y))
@@ -47,7 +48,7 @@ int kmsg_new(struct kmsg *buf, int size) {
         for (int i = 0; i < MAX_MSG_NUMBER; i++)
             buf->msg_part_len[i] = 0;
 
-        if (pthread_mutex_init(&buf->mutex, NULL) < 0) return -1;
+        thread_spin_init(&buf->lock);
 
         if (size > 0) {
             buf->data = (unsigned char *)malloc(sizeof(char) * size);
@@ -67,7 +68,6 @@ int kmsg_delete(struct kmsg *buf) {
         if (buf->data) {
             free(buf->data);
             buf->data = NULL;
-            pthread_mutex_destroy(&buf->mutex);  
             memset(buf, 0, sizeof(struct kmsg));
             ret = 0;
         }
@@ -81,24 +81,24 @@ int kmsg_delete(struct kmsg *buf) {
 
 int kmsg_push(struct kmsg *buf, const char *data, int len) {
 
-    pthread_mutex_lock(&buf->mutex);  
+    thread_spin_lock(&buf->lock);  
 
     unsigned int l;
 
     if(len <= 0){
         printf("data length invalid\n");
-        pthread_mutex_unlock(&buf->mutex);
+        thread_spin_unlock(&buf->lock);
         return 0;
     }
 
     if((buf->size - buf->in + buf->out) < len){
         printf("kmsg is full\n");
-        pthread_mutex_unlock(&buf->mutex);
+        thread_spin_unlock(&buf->lock);
         return 0;
     }
     if((buf->msg_number + 1) > MAX_MSG_NUMBER){
         printf("kmsg is full\n");
-        pthread_mutex_unlock(&buf->mutex);
+        thread_spin_unlock(&buf->lock);
         return 0;
     }
 
@@ -115,7 +115,7 @@ int kmsg_push(struct kmsg *buf, const char *data, int len) {
     buf->msg_part_len[buf->msg_number] = len;
     buf->msg_number += 1;
 
-    pthread_mutex_unlock(&buf->mutex);  
+    thread_spin_unlock(&buf->lock);  
 
     return len;
 }
@@ -134,7 +134,7 @@ int kmsg_pop(struct kmsg *buf, char *data) {
 
     if (buf->msg_number <= 0) return 0;
 
-    pthread_mutex_lock(&buf->mutex);  
+    thread_spin_lock(&buf->lock);  
 
     int len;
     unsigned int l;
@@ -153,7 +153,7 @@ int kmsg_pop(struct kmsg *buf, char *data) {
         buf->msg_part_len[i] = buf->msg_part_len[i + 1];
     }
 
-    pthread_mutex_unlock(&buf->mutex);  
+    thread_spin_unlock(&buf->lock);  
 
     return len;
 }

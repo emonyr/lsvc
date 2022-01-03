@@ -1,6 +1,10 @@
 #ifndef __NETWORK_SVC_H_
 #define __NETWORK_SVC_H_
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include "lsvc.h"
 
 #define NETWORK_SSID_MAX_LENGTH 32
@@ -49,5 +53,9 @@ extern int network_ping(const char *des, int count);
 extern int network_svc_intent_handler(int event, void *data, int size);
 
 extern lsvc_t network_svc;
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
 
 #endif	/* __NETWORK_SVC_H_ */

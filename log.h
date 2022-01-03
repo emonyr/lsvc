@@ -1,8 +1,12 @@
 #ifndef __LOG_SVC_H_
 #define __LOG_SVC_H_
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <stdio.h>
-#include <pthread.h>
+#include "thread.h"
 #include "lsvc.h"
 
 typedef enum {
@@ -21,7 +25,7 @@ typedef enum {
 
 typedef struct {
 	log_level_t level;
-	pthread_mutex_t mtx;
+	thread_spin_t lock;
 }__attribute__ ((packed))log_svc_state_t;
 
 typedef struct {
@@ -63,5 +67,9 @@ extern int log_impl(FILE *output, int level, const char* filename, int line,
 extern void log_hex_dump(unsigned char *data, int size);
 
 extern lsvc_t log_svc;
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
 
 #endif	/* __LOG_SVC_H_ */

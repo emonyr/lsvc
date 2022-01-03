@@ -1,6 +1,10 @@
 #ifndef __SOCKET_TOOL_H__
 #define __SOCKET_TOOL_H__
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <netinet/in.h>
 
 typedef struct {
@@ -30,6 +34,8 @@ extern int socket_udp_init(socket_info_t *udp);
 extern int socket_udp_send(socket_info_t *udp, void *data, int size);
 extern int socket_udp_recv(socket_info_t *udp, void *data, int size);
 
-
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
 
 #endif	/* __SOCKET_TOOL_H__ */

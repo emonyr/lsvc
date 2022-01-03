@@ -1,6 +1,9 @@
 #ifndef __PROTO_TOOL_H__
 #define __PROTO_TOOL_H__
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 typedef enum {
 	TYPE_JSON,
@@ -30,5 +33,8 @@ extern void *proto_json_str_get(proto_cache_t *c, const char *path);
 extern int proto_json_str_add(proto_cache_t *c, const char *path, 
 									const char *name, const char *string);
 
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
 
 #endif	/* __PROTO_TOOL_H__ */

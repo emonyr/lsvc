@@ -2,8 +2,7 @@
 #define _KMSG_H_
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
 /*
@@ -12,7 +11,7 @@ extern "C"
  * 多线程安全的消息队列实现
  */
 
-#include <pthread.h>
+#include "thread.h"
 
 #define MAX_MSG_NUMBER  128
 
@@ -23,7 +22,7 @@ struct kmsg {
     unsigned char *data;
     int msg_number;
     int msg_part_len[MAX_MSG_NUMBER];
-    pthread_mutex_t mutex;  
+    thread_spin_t lock;  
 };
 
 
@@ -38,7 +37,7 @@ int kmsg_check(struct kmsg *buf);
 int kmsg_pop(struct kmsg *buf, char *data);
 
 #ifdef __cplusplus
-}
+} /* extern "C" */
 #endif
 
 #endif

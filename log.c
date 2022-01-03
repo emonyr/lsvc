@@ -13,7 +13,7 @@
 
 log_svc_state_t log_state = {
 	.level = LOG_LEVEL_DEBUG,
-	.mtx = PTHREAD_MUTEX_INITIALIZER,
+	.lock = THREAD_SPINLOCK_INITIALIZER,
 };
 
 int log_svc_state(const void *_msg)

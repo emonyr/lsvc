@@ -1,10 +1,15 @@
 #ifndef __LBUS_H__
 #define __LBUS_H__
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <pthread.h>
 #include "socket.h"
 #include "list.h"
 #include "kvlist.h"
+#include "thread.h"
 #include "lsvc.h"
 
 typedef enum {
@@ -43,7 +48,7 @@ typedef struct{
 	void *userdata;
 	void *timer;
 	pthread_t tid;
-	pthread_mutex_t mtx;
+	thread_spin_t lock;
 	socket_info_t iface;
 	struct list_head entry;
 }__attribute__ ((packed))lbus_endpoint_t;
@@ -53,7 +58,7 @@ typedef struct {
 	void *runtime;
 	int (*dispatch)(void *msg,void *userdata);
 	lbus_endpoint_t ep;
-	pthread_mutex_t mtx;
+	thread_spin_t lock;
 	struct list_head peers;
 	struct kvlist route_table;
 }__attribute__ ((packed))lbus_broker_t;
@@ -72,5 +77,9 @@ extern void lbus_endpoint_destroy(lbus_endpoint_t *ep);
 extern int lbus_msg_broadcast(lbus_endpoint_t *ep,void *msg);
 
 extern lsvc_t lbus_svc;
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
 
 #endif /* __LBUS_H__ */
