@@ -44,10 +44,11 @@ typedef struct {
 	socket_info_t sock;
 	pid_t pid;
 	void *tid;
-	int timeout;
+	unsigned int timeout;
 	char tx_buf[PACKET_SIZE];
 	char rx_buf[PACKET_SIZE];
-	int rx_len;
+	unsigned int rx_len;
+	unsigned int ttime;
 }__attribute__ ((packed))network_ping_t;
 
 unsigned short network_ping_chksum(unsigned short *data,int len)
@@ -105,15 +106,16 @@ int network_ping_unpack(int num, network_ping_t *p)
 	if (nbyte < 8)
 		return -1;
 
-	if (		(icmp->icmp_type == ICMP_ECHOREPLY)
-		&& 	(icmp->icmp_id == p->pid)
-		&& 	(icmp->icmp_seq == num))
+	if ((icmp->icmp_type == ICMP_ECHOREPLY)
+		&& (icmp->icmp_id == p->pid) && (icmp->icmp_seq == num)) {
+		p->ttime = icmp->icmp_ttime;
 		return 0;
+	}
 
 	return -1;
 }
 
-void network_ping_timeout(void *arg, timer_t id)
+void network_ping_timeout(void *arg)
 {
 	network_ping_t *p = arg;
 
@@ -163,7 +165,7 @@ int network_ping_recv(int num, network_ping_t *p)
 
 int network_ping(const char *des, int count)
 {
-	int i;
+	int try=0,success=0;
 	struct in_addr inaddr;
 	struct hostent * host;
 	network_ping_t ping_info = {0};
@@ -171,50 +173,46 @@ int network_ping(const char *des, int count)
 	
 	if (!des) {
 		log_err("Invalid address to ping\n");
-		goto failed;
+		goto out;
 	}
 
 	host = gethostbyname(des);
 	if (!host) {
 		log_err("gethostbyname failed\n");
-		goto failed;
+		goto out;
 	}else{
 		memcpy(&inaddr, host->h_addr_list[0], host->h_length);
 	}
 
-	if (count <= 0)
-		count = 1;
+	count = count <= 0 ? 1 : count;
 
 	sprintf(p->sock.addr, "%s", inet_ntoa(inaddr));
-	log_debug("Ping des: %s(%s)\n", des, p->sock.addr);
+	log_info("pinging %s (%s) %d times\n", des, p->sock.addr, count);
 
 	if ((p->sock.fd = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP))< 0) {
 		log_err("Failed to create socket\n");
-		return -1;
+		goto out;
 	}
 
 	socket_set_non_block(p->sock.fd, 1);
 	p->pid = getpid();
-	
-	for(i=0;i<count;i++) {
-		if (network_ping_send(i,p) < 0) {
-			log_err("Failed to send ping packet\n");
-			goto failed;
+	success = 0;
+	for (try=0; try<count; try++) {
+		if (network_ping_send(try,p) < 0) {
+			log_err("Failed to send ping packet: icmp_seq=%d\n", try);
 		}
 
-		if (network_ping_recv(i,p) == 0) {
-			goto success;
+		if (network_ping_recv(try,p) == 0) {
+			log_debug("%d bytes from %s (%s) icmp_seq=%d time=%f ms\n",
+						p->rx_len, des, p->sock.addr, try, p->ttime/1000.0);
+			success++;
 		}
 	}
 
-failed:
+out:
 	socket_close(&p->sock);
-	log_info("Ping failed: %s(%s)\n", des, p->sock.addr);
-	return -1;
-success:
-	socket_close(&p->sock);
-	log_info("Ping success: %s(%s)\n", des, p->sock.addr);
-	return 0;
+	log_info("ping %s (%s) %d/%d packet received\n", des, p->sock.addr, success, try);
+	return success == count ? 0 : -1;
 }
 
 int network_eth_info_update(const char *eth_inf)
@@ -407,7 +405,7 @@ int network_svc_ioctl(void *runtime, void *_msg)
 		break;
 		
 		case NETWORK_EV_PING:
-			err = network_ping(ctl->ping_address, 1);
+			err = network_ping(ctl->ping_address, 4);
 		break;
 	}
 

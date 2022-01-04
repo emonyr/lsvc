@@ -61,10 +61,10 @@ void *_utils_timer_run(void *arg)
 	utils_timer_sleep(t->after);
 
 	while (_utils_timer_state_get(t) != TIMER_STOP) {
-		utils_timer_sleep(t->interval);
 		t->timeout_handler(t->arg);
 		if (!t->repeat)
 			break;
+		utils_timer_sleep(t->interval);
 	}
 
 	return NULL;
@@ -92,7 +92,7 @@ void *utils_timer_start(void *cb, void *arg,
 	t->thread.arg = t;
 	parallel_thread_create(&t->thread);
 	
-	log_debug("Timer started: %p\n", t);
+	// log_debug("Timer started: %p\n", t);
 	
     return t;
 failed:
@@ -104,7 +104,7 @@ int utils_timer_stop(void *_t)
 {
 	utils_timer_t *t = _t;
 	_utils_timer_state_set(t, TIMER_STOP);
-	parallel_thread_join(&t->thread);
+	parallel_thread_kill(&t->thread);
 	_utils_timer_delete(t);
 	return 0;
 }

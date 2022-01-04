@@ -29,7 +29,7 @@ int parallel_thread_create(parallel_thread_t *p)
 	return pthread_create(&p->id, NULL, p->routine, p->arg);
 }
 
-int parallel_thread_join(parallel_thread_t *p)
+int parallel_thread_kill(parallel_thread_t *p)
 {
-	return pthread_join(&p->id, NULL);
+	return pthread_join(p->id, NULL);
 }

@@ -22,7 +22,7 @@ typedef struct {
 }parallel_thread_t;
 
 extern int parallel_thread_create(parallel_thread_t *p);
-extern int parallel_thread_join(parallel_thread_t *p);
+extern int parallel_thread_kill(parallel_thread_t *p);
 
 
 #ifdef __cplusplus
