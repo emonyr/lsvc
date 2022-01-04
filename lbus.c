@@ -4,8 +4,6 @@
 #include <unistd.h>
 #include <string.h>
 #include <errno.h>
-#include <time.h>
-#include <arpa/inet.h>
 #include <assert.h>
 
 #include "kmsg.h"
@@ -67,7 +65,7 @@ int lbus_msg_broadcast(lbus_endpoint_t *ep,void *msg)
 	lbus_msg_t *m = msg;
 	
 	if (!m->msg_id)
-		m->msg_id = time(NULL);
+		m->msg_id = utils_timer_now();
 	
 	parallel_spin_lock(&ep->lock);
 	m->iface.fd = ep->iface.fd,
@@ -185,7 +183,7 @@ void lbus_udp_pop_routine(void *data)
 	lbus_msg_t *m = NULL;
     lbus_endpoint_t *ep = (lbus_endpoint_t *)data;
 
-	ep->timer = utils_timer_start(lbus_send_ping, ep, 1, 2, 1);
+	ep->timer = utils_timer_start(lbus_send_ping, ep, 0, 2, 1);
 
     while(ep->running) {
 		usleep(20000);

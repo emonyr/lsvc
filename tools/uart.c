@@ -14,13 +14,13 @@ int speed_arr[] = {B230400, B115200, B57600, B38400, B19200, B9600, B4800, B2400
 
 int name_arr[] = {230400, 115200, 57600, 38400, 19200, 9600, 4800, 2400, 1800, 1200, 600, 300,};
 
-/*UART_setSpeed()
+/*uart_setSpeed()
  *@brief  set uart speed
  *@param  fd: uart file descriptor
  *@param  speed: baud rate to be set
  *@return	void
  */
-void UART_setSpeed(int fd, int speed)
+void uart_set_speed(int fd, int speed)
 {
 	 int i;
 	 struct termios Opt;
@@ -34,26 +34,26 @@ void UART_setSpeed(int fd, int speed)
 			 cfsetispeed(&Opt, speed_arr[i]);
 			 cfsetospeed(&Opt, speed_arr[i]);
 			 if(tcsetattr(fd, TCSANOW, &Opt) != 0)
-				 printf("UART_SetSpeed: failed to set IO speed.\n");
+				 printf("uart_SetSpeed: failed to set IO speed.\n");
 		 }
 	 }
 	 tcflush(fd,TCIOFLUSH);
 }
 
 
-/*UART_setParity()
+/*uart_setParity()
  *@brief  set uart parity
  *@param  fd: uart file descriptor
  *@param  databits: data bit (7,8)
  *@param  stopbits: stop bit (1,2)
  *@param  parity: parity bit (N,E,O,S)
  */
-int UART_setParity(int fd,uint8_t databits,uint8_t stopbits,uint8_t parity)
+int uart_set_parity(int fd, unsigned char databits, unsigned char stopbits, unsigned char parity)
 {
 	 struct termios options;
 
 	 if(tcgetattr(fd,&options) != 0)
-		 printf("UART_setParity: tcgetattr failed\n");
+		 printf("uart_setParity: tcgetattr failed\n");
 	 
 	 //disable all character processing
 	 //options.c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL | IXON | IXOFF);
@@ -128,33 +128,34 @@ int UART_setParity(int fd,uint8_t databits,uint8_t stopbits,uint8_t parity)
 	 tcflush(fd,TCIFLUSH); /* update the options */
 	 
 	 if(tcsetattr(fd,TCSANOW,&options) != 0)
-		 printf("UART_setParity: tcsetattr failed\n");
+		 printf("uart_setParity: tcsetattr failed\n");
 	 
 	 return 0;
  }
 
 
-/*UART_init()
- *@brief	 init UART with baudrate
+/*uart_init()
+ *@brief	 init uart with baudrate
  *@param	 dev: device path
  *@param	 arg: argument to init uart
- *@return	 fd: UART file descriptor
+ *@return	 fd: uart file descriptor
  */
-int32_t UART_init(const char *dev,int32_t baud_rate,uint8_t databits,uint8_t parity,uint8_t stopbits)
+int uart_init(const char *dev, int baud_rate, unsigned char databits,
+				unsigned char parity, unsigned char stopbits)
 {
 	 int fd;
 	 
 	 //open uart
 	 fd = open( dev, O_RDWR | O_NOCTTY | O_NONBLOCK);
 	 if(fd == -1)
-		 printf("UART_init: failed to open UART port.\n");
+		 printf("uart_init: failed to open uart port.\n");
 	 
 	 //set baud rate
-	 UART_setSpeed(fd,baud_rate);
+	 uart_set_speed(fd,baud_rate);
 	 
 	 //set parity
-	 if(UART_setParity(fd,databits,stopbits,parity) == -1)
-		 printf("UART_setParity: failed to set parity.\n");
+	 if(uart_set_parity(fd,databits,stopbits,parity) == -1)
+		 printf("uart_setParity: failed to set parity.\n");
 	 
 	 //set FNDELAY
 	 fcntl(fd,F_SETFL,FNDELAY);

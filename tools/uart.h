@@ -5,11 +5,11 @@
 extern "C" {
 #endif
 
-#include <inttypes.h>
 
-void UART_setSpeed(int32_t fd, int32_t speed);
-int32_t UART_setParity(int32_t fd,uint8_t databits,uint8_t stopbits,uint8_t parity);
-int32_t UART_init(const char *dev,int32_t baud_rate,uint8_t databits,uint8_t parity,uint8_t stopbits);
+void uart_set_speed(int fd, int speed);
+int uart_set_parity(int fd, unsigned char databits, unsigned char stopbits, unsigned char parity);
+int uart_init(const char *dev, int baud_rate, unsigned char databits,
+                    unsigned char parity, unsigned char stopbits);
 
 
 #ifdef __cplusplus
