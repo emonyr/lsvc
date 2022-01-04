@@ -47,9 +47,10 @@ typedef struct {
 
 typedef struct {
 	char ping_address[64];
+	unsigned int count;
 }network_ctl_t;
 
-extern int network_ping(const char *des, int count);
+extern int network_ping(const char *des, unsigned int count);
 extern int network_svc_intent_handler(int event, void *data, int size);
 
 extern lsvc_t network_svc;

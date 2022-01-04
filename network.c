@@ -163,7 +163,7 @@ int network_ping_recv(int num, network_ping_t *p)
 	return 0;
 }
 
-int network_ping(const char *des, int count)
+int network_ping(const char *des, unsigned int count)
 {
 	int try=0,success=0;
 	struct in_addr inaddr;
@@ -184,7 +184,7 @@ int network_ping(const char *des, int count)
 		memcpy(&inaddr, host->h_addr_list[0], host->h_length);
 	}
 
-	count = count <= 0 ? 1 : count;
+	count = count == 0 ? 1 : count;
 
 	sprintf(p->sock.addr, "%s", inet_ntoa(inaddr));
 	log_info("pinging %s (%s) %d times\n", des, p->sock.addr, count);
@@ -359,7 +359,7 @@ int network_svc_exit(void *runtime)
 /*
  * shell command example
  * #ping www.bing.com
- * /usr/local/bin/lsvc network -p www.bing.com
+ * /usr/local/bin/lsvc network -p www.bing.com -c 4
  */
 int network_svc_getopt(int argc, const char *argv[], void **msg)
 {
@@ -375,11 +375,21 @@ int network_svc_getopt(int argc, const char *argv[], void **msg)
 
 	m = *msg;
 	ctl = m->payload;
-	while((opt = getopt(argc, argv, "p:")) != -1) {
+	while((opt = getopt(argc, argv, "vp:c:")) != -1) {
 		switch (opt) {
+			case 'v':
+				m->event = NETWORK_EV_GET_STATE;
+				err = 0;
+				break;
 			case 'p':
 				m->event = NETWORK_EV_PING;
 				sprintf(ctl->ping_address, "%s", (char *)optarg);
+				err = 0;
+				break;
+
+			case 'c':
+				m->event = NETWORK_EV_PING;
+				ctl->count = atoi(optarg);
 				err = 0;
 				break;
 
@@ -405,7 +415,7 @@ int network_svc_ioctl(void *runtime, void *_msg)
 		break;
 		
 		case NETWORK_EV_PING:
-			err = network_ping(ctl->ping_address, 4);
+			err = network_ping(ctl->ping_address, ctl->count);
 		break;
 	}
 
