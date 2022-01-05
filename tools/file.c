@@ -69,11 +69,11 @@ int file_get_size(const char *filename)
 
 char *file_get_striped_name(const char *filename)
 {
-	char *strip_filename = filename;
+	char *strip_filename = (char *)filename;
 
 	for(int i=0; filename[i] != '\0'; i++){
 		if(filename[i] == '/')
-			strip_filename = &filename[i] + 1;
+			strip_filename = (char *)&filename[i] + 1;
 	}
 
 	return strip_filename;

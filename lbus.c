@@ -14,7 +14,7 @@
 #include "log.h"
 #include "lbus.h"
 
-#define LBUS_UDP_PORT 13333
+#define LBUS_UDP_PORT "13333"
 
 lbus_broker_t broker = {0};
 
@@ -70,7 +70,7 @@ int lbus_msg_broadcast(lbus_endpoint_t *ep,void *msg)
 	parallel_spin_lock(&ep->lock);
 	m->iface.fd = ep->iface.fd,
 	sprintf(m->iface.addr, "%s", ep->iface.addr);
-	m->iface.port = LBUS_UDP_PORT,	// sendto broker port
+	sprintf(m->iface.port, "%s", LBUS_UDP_PORT);	// sendto broker port
 	
 	nbyte = socket_udp_send(&m->iface, m, LMSG_HEADER_SIZE + m->size);
 	if (nbyte < 0)
@@ -258,7 +258,7 @@ int lbus_broker_create(lbus_broker_t *bk)
 	}
 	
 	bk->ep.recv_cb = bk->dispatch;
-	bk->ep.iface.port = LBUS_UDP_PORT;
+	sprintf(bk->ep.iface.port, "%s", LBUS_UDP_PORT);
 	bk->ep.userdata = bk;
 	bk->ep.runtime = bk->runtime;
 	bk->ep.bond = 1; // broker auto bonded
@@ -316,12 +316,6 @@ int lbus_endpoint_create(lbus_endpoint_t *ep)
 		goto failed;
 	}
 	
-	err = socket_bind(&ep->iface);
-	if (err < 0) {
-		log_err("Failed to bind endpoint socket\n");
-		goto failed;
-	}
-	
 	return err;
 
 failed:
@@ -342,7 +336,7 @@ int lbus_direct_send(lbus_endpoint_t *ep, void *msg)
 
 	iface.fd = ep->iface.fd;
 	sprintf(iface.addr, "%s", ep->iface.addr);
-	iface.port = ntohs(m->iface.des.sin_port);
+	sprintf(iface.port, "%d", ntohs(m->iface.des.sin_port));
 	
 	nbyte = socket_udp_send(&iface, m, LMSG_HEADER_SIZE + m->size);
 	if (nbyte < 0)
@@ -409,7 +403,7 @@ int lbus_route_table_update(lbus_msg_t *msg)
 	int value = ntohs(bk->ep.iface.src.sin_port);
 	char port[24] = {0};
 	
-	if (!value || value == LBUS_UDP_PORT) {
+	if (!value || value == atoi(LBUS_UDP_PORT)) {
 		log_debug("Ignoring invalid port\n");
 		return -1;
 	}

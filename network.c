@@ -3,7 +3,6 @@
 #include <signal.h>
 #include <stdlib.h>
 #include <fcntl.h>
-#include <netdb.h>
 #include <errno.h>
 
 #include <sys/types.h>
@@ -166,27 +165,16 @@ int network_ping_recv(int num, network_ping_t *p)
 int network_ping(const char *des, unsigned int count)
 {
 	int try=0,success=0;
-	struct in_addr inaddr;
-	struct hostent * host;
+	
 	network_ping_t ping_info = {0};
 	network_ping_t *p = &ping_info;
 	
-	if (!des) {
+	if (!des || socket_get_host_ip(des, p->sock.addr) != 0) {
 		log_err("Invalid address to ping\n");
 		goto out;
 	}
 
-	host = gethostbyname(des);
-	if (!host) {
-		log_err("gethostbyname failed\n");
-		goto out;
-	}else{
-		memcpy(&inaddr, host->h_addr_list[0], host->h_length);
-	}
-
 	count = count == 0 ? 1 : count;
-
-	sprintf(p->sock.addr, "%s", inet_ntoa(inaddr));
 	log_info("pinging %s (%s) %d times\n", des, p->sock.addr, count);
 
 	if ((p->sock.fd = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP))< 0) {

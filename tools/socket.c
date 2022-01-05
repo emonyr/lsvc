@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <netdb.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -11,9 +12,6 @@
 #include <arpa/inet.h>
 
 #include "socket.h"
-
-#define VAL_ON 1
-#define VAL_OFF 0
 
 
 /*
@@ -106,9 +104,42 @@ int socket_bind(socket_info_t *info)
 {	
     info->src.sin_family = AF_INET;
     info->src.sin_addr.s_addr = inet_addr(info->addr);
-	info->src.sin_port = htons(info->port);
+	info->src.sin_port = htons(atoi(info->port));
 	
-	if (bind(info->fd, &info->src, sizeof(struct sockaddr)) != 0) {
+	if (bind(info->fd, (struct sockaddr *)&info->src, sizeof(struct sockaddr)) != 0) {
+		fprintf(stderr, "%s failed: %s\n", __func__, strerror(errno));
+		return -1;
+	}
+	
+	return 0;
+}
+
+int socket_listen(socket_info_t *info)
+{	
+	if (listen(info->fd, 1024) != 0) {
+		fprintf(stderr, "%s failed: %s\n", __func__, strerror(errno));
+		return -1;
+	}
+	
+	return 0;
+}
+
+int socket_connect(socket_info_t *info)
+{	
+	int err;
+	char ip[SOCKET_ADDR_MAX];
+
+	err = socket_get_host_ip(info->addr, ip);
+	if (err) {
+		fprintf(stderr, "%s failed: %s\n", __func__, strerror(errno));
+		return -1;
+	}
+
+    info->des.sin_family = AF_INET;
+    info->des.sin_addr.s_addr = inet_addr(ip);
+	info->des.sin_port = htons(atoi(info->port));
+	
+	if (connect(info->fd, (struct sockaddr *)&info->des, sizeof(struct sockaddr)) != 0) {
 		fprintf(stderr, "%s failed: %s\n", __func__, strerror(errno));
 		return -1;
 	}
@@ -126,12 +157,129 @@ int socket_close(socket_info_t *info)
 	return 0;
 }
 
+int socket_get_host_ip(const char *des, char *output)
+{
+	struct in_addr inaddr;
+	struct hostent * host;
+
+	host = gethostbyname(des);
+	if (!host) {
+		fprintf(stderr, "%s failed: %s\n", __func__, strerror(errno));
+		return -1;
+	}else{
+		memcpy(&inaddr, host->h_addr_list[0], host->h_length);
+		sprintf(output, "%s", inet_ntoa(inaddr));
+	}
+
+	return 0;
+}
+
 
 /*
  * tcp socket api
  */
+int socket_tcp_server_init(socket_info_t *iface)
+{
+	int err;
+	struct addrinfo hints = {0};
+	struct addrinfo *result,*rp;
 
+	hints.ai_family = AF_INET;
+	hints.ai_socktype = SOCK_STREAM;
+	hints.ai_flags = AI_PASSIVE;
+	hints.ai_protocol = 0;
+	hints.ai_canonname = NULL;
+	hints.ai_addr = NULL;
+	hints.ai_next = NULL;
 
+	err = getaddrinfo(NULL, iface->port, &hints, &result);
+	if(err != 0){
+		fprintf(stderr, "%s failed: %s\n", __func__, gai_strerror(err));
+		return -1;
+	}
+
+	for (rp=result; rp!=NULL; rp=rp->ai_next) {
+		socket_close(iface);
+		iface->fd = socket(AF_INET, SOCK_STREAM, 0);
+		if(iface->fd < 0) {
+			fprintf(stderr, "%s failed: %s\n", __func__, strerror(errno));
+			return -1;
+		}
+		
+		if(socket_set_close_on_exec(iface->fd, 1))
+			continue;
+		
+		if(socket_set_non_block(iface->fd, 1))
+			continue;
+		
+		if(socket_set_reuse(iface->fd, 1))
+			continue;
+
+		if(socket_bind(iface))
+			continue;
+
+		if(socket_listen(iface) == 0)
+			break;
+	}
+
+	if (rp == NULL) {
+		socket_close(iface);
+		err = -1;
+	} else {
+		err = 0;
+	}
+
+	freeaddrinfo(result);
+
+    return err;
+}
+
+int socket_tcp_client_init(socket_info_t *iface)
+{
+	int err;
+	struct addrinfo hints = {0};
+	struct addrinfo *result,*rp;
+
+	hints.ai_family = AF_UNSPEC;
+	hints.ai_socktype = 0;
+	hints.ai_flags = 0;
+	hints.ai_protocol = 0;
+	hints.ai_canonname = NULL;
+	hints.ai_addr = NULL;
+	hints.ai_next = NULL;
+
+	err = getaddrinfo(iface->addr, iface->port, &hints, &result);
+	if(err != 0){
+		fprintf(stderr, "%s failed: %s\n", "getaddrinfo", gai_strerror(err));
+		return -1;
+	}
+
+	for (rp=result; rp!=NULL; rp=rp->ai_next) {
+		socket_close(iface);
+		iface->fd = socket(AF_INET, SOCK_STREAM, 0);
+		if(iface->fd < 0) {
+			fprintf(stderr, "%s failed: %s\n", "Create socket", strerror(errno));
+			return -1;
+		}
+		
+		if(socket_set_close_on_exec(iface->fd, 1))
+			continue;
+		
+		if(socket_connect(iface) == 0)
+			break;
+	}
+
+	if (rp == NULL) {
+		socket_close(iface);
+		err = -1;
+	} else {
+		err = 0;
+	}
+
+	freeaddrinfo(result);
+
+    return err;
+}
 
 
 
@@ -157,7 +305,7 @@ int socket_udp_rcvbuf_set(int fd, int val)
 {
 	int rx_size = val;
     socklen_t len = sizeof(rx_size);
-    if (setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &rx_size, &len) < 0) {
+    if (setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &rx_size, len) < 0) {
         fprintf(stderr, "%s failed: %s\n", __func__, strerror(errno));
         return -1;
     }else{
@@ -169,33 +317,56 @@ int socket_udp_rcvbuf_set(int fd, int val)
 
 int socket_udp_init(socket_info_t *iface)
 {
-	if(!iface || iface->fd > 0)
+	int err;
+	struct addrinfo hints = {0};
+	struct addrinfo *result,*rp;
+
+	hints.ai_family = AF_UNSPEC;
+	hints.ai_socktype = SOCK_DGRAM;
+	hints.ai_flags = AI_PASSIVE;
+	hints.ai_protocol = 0;
+	hints.ai_canonname = NULL;
+	hints.ai_addr = NULL;
+	hints.ai_next = NULL;
+
+	err = getaddrinfo(NULL, iface->port, &hints, &result);
+	if(err != 0){
+		fprintf(stderr, "%s failed: %s\n", "getaddrinfo", gai_strerror(err));
 		return -1;
+	}
+
+	for (rp=result; rp!=NULL; rp=rp->ai_next) {
+		socket_close(iface);
+		iface->fd = socket(AF_INET, SOCK_DGRAM, 0);
+		if(iface->fd < 0)
+			continue;
 		
-    iface->fd = socket(AF_INET, SOCK_DGRAM, 0);
-    if(iface->fd < 0) {
-        printf("Failed to create socket: %s\n",strerror(errno));
-        return -1;
-    }
+		if(socket_set_close_on_exec(iface->fd, 1))
+			continue;
+		
+		if(socket_set_non_block(iface->fd, 1))
+			continue;
+		
+		if(socket_set_broadcast(iface->fd, 1))
+			continue;
+		
+		//if(socket_set_reuse(iface->fd, 1))
+		//	continue;
+
+		if(socket_bind(iface) == 0)
+			break;
+	}
 	
-	if(socket_set_close_on_exec(iface->fd, VAL_ON) < 0)
-		goto failed;
-	
-	if(socket_set_non_block(iface->fd, VAL_ON) < 0)
-		goto failed;
-	
-	if(socket_set_broadcast(iface->fd, VAL_ON) < 0)
-		goto failed;
-	
-	//if(socket_set_reuse(iface->fd, VAL_ON) < 0)
-	//	goto failed;
-	
-    return iface->fd;
-	
-failed:
-	close(iface->fd);
-	iface->fd = -1;
-	return iface->fd;
+	if (rp == NULL) {
+		socket_close(iface);
+		err = -1;
+	} else {
+		err = 0;
+	}
+
+	freeaddrinfo(result);
+
+    return err;
 }
 
 int socket_udp_send(socket_info_t *iface, void *data, int size)
@@ -205,12 +376,12 @@ int socket_udp_send(socket_info_t *iface, void *data, int size)
 		
 	address.sin_family = AF_INET;
 	address.sin_addr.s_addr = inet_addr(iface->addr);
-	address.sin_port = htons(iface->port);
+	address.sin_port = htons(atoi(iface->port));
 	
 	nbyte = sendto(iface->fd, data, size, MSG_DONTWAIT | MSG_NOSIGNAL, 
 						(struct sockaddr*)&address, sizeof(address));
 	if(nbyte < 0)
-		fprintf(stderr, "Socket_udp_send failed: %s:%d nbyte %d fd %d\n", iface->addr, iface->port, nbyte, iface->fd);
+		fprintf(stderr, "Socket_udp_send failed: %s:%s nbyte %d fd %d\n", iface->addr, iface->port, nbyte, iface->fd);
 	
 	return nbyte;
 }
