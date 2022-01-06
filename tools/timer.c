@@ -76,7 +76,7 @@ void *utils_timer_start(void *cb, void *arg,
 	utils_timer_t *t = mem_alloc(sizeof(utils_timer_t));
 	
 	if (!t) {
-		log_err("Failed to allocate timer memory\n");
+		fprintf(stderr, "Failed to allocate timer memory\n");
 		goto failed;
 	}
 	
@@ -92,7 +92,7 @@ void *utils_timer_start(void *cb, void *arg,
 	t->thread.arg = t;
 	parallel_thread_create(&t->thread);
 	
-	// log_debug("Timer started: %p\n", t);
+	// fprintf(stderr, "Timer started: %p\n", t);
 	
     return t;
 failed:

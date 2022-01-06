@@ -127,7 +127,7 @@ int socket_listen(socket_info_t *info)
 int socket_connect(socket_info_t *info)
 {	
 	int err;
-	char ip[SOCKET_ADDR_MAX];
+	char ip[SOCKET_ADDR_MAX] = {0};
 
 	err = socket_get_host_ip(info->addr, ip);
 	if (err) {
@@ -240,8 +240,8 @@ int socket_tcp_client_init(socket_info_t *iface)
 	struct addrinfo hints = {0};
 	struct addrinfo *result,*rp;
 
-	hints.ai_family = AF_UNSPEC;
-	hints.ai_socktype = 0;
+	hints.ai_family = AF_INET;
+	hints.ai_socktype = SOCK_STREAM;
 	hints.ai_flags = 0;
 	hints.ai_protocol = 0;
 	hints.ai_canonname = NULL;
