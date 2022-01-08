@@ -184,7 +184,7 @@ int socket_tcp_server_init(socket_info_t *iface)
 	struct addrinfo hints = {0};
 	struct addrinfo *result,*rp;
 
-	hints.ai_family = AF_INET;
+	hints.ai_family = AF_UNSPEC;
 	hints.ai_socktype = SOCK_STREAM;
 	hints.ai_flags = AI_PASSIVE;
 	hints.ai_protocol = 0;
@@ -200,7 +200,7 @@ int socket_tcp_server_init(socket_info_t *iface)
 
 	for (rp=result; rp!=NULL; rp=rp->ai_next) {
 		socket_close(iface);
-		iface->fd = socket(AF_INET, SOCK_STREAM, 0);
+		iface->fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
 		if(iface->fd < 0) {
 			fprintf(stderr, "%s failed: %s\n", __func__, strerror(errno));
 			return -1;
@@ -240,7 +240,7 @@ int socket_tcp_client_init(socket_info_t *iface)
 	struct addrinfo hints = {0};
 	struct addrinfo *result,*rp;
 
-	hints.ai_family = AF_INET;
+	hints.ai_family = AF_UNSPEC;
 	hints.ai_socktype = SOCK_STREAM;
 	hints.ai_flags = 0;
 	hints.ai_protocol = 0;
@@ -256,7 +256,7 @@ int socket_tcp_client_init(socket_info_t *iface)
 
 	for (rp=result; rp!=NULL; rp=rp->ai_next) {
 		socket_close(iface);
-		iface->fd = socket(AF_INET, SOCK_STREAM, 0);
+		iface->fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
 		if(iface->fd < 0) {
 			fprintf(stderr, "%s failed: %s\n", "Create socket", strerror(errno));
 			return -1;
@@ -337,7 +337,7 @@ int socket_udp_init(socket_info_t *iface)
 
 	for (rp=result; rp!=NULL; rp=rp->ai_next) {
 		socket_close(iface);
-		iface->fd = socket(AF_INET, SOCK_DGRAM, 0);
+		iface->fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
 		if(iface->fd < 0)
 			continue;
 		
