@@ -126,7 +126,7 @@ int network_ping_send(int num, network_ping_t *p)
 	int size;
 	size = network_ping_pack(num, p);
 
-	return socket_udp_send(&p->sock, p->tx_buf, size);
+	return socket_send(&p->sock, p->tx_buf, size);
 }
 
 int network_ping_recv(int num, network_ping_t *p)
@@ -143,7 +143,7 @@ int network_ping_recv(int num, network_ping_t *p)
 	while(!p->timeout) {
 		select(p->sock.fd + 1, &rfds, NULL, NULL, &tv);
 		if (FD_ISSET(p->sock.fd,&rfds)) {
-			p->rx_len = socket_udp_recv(&p->sock, p->rx_buf, sizeof(p->rx_buf));
+			p->rx_len = socket_recv(&p->sock, p->rx_buf, sizeof(p->rx_buf));
 			if (p->rx_len <= 0) {
 				log_err("Failed to recv icmp packet\n");
 				return -1;

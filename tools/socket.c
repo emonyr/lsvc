@@ -147,16 +147,6 @@ int socket_connect(socket_info_t *info)
 	return 0;
 }
 
-int socket_close(socket_info_t *info)
-{
-	if (info->fd > 0)
-		close(info->fd);
-	
-	info->fd = -1;
-	
-	return 0;
-}
-
 int socket_get_host_ip(const char *des, char *output)
 {
 	struct in_addr inaddr;
@@ -174,6 +164,58 @@ int socket_get_host_ip(const char *des, char *output)
 	return 0;
 }
 
+int socket_close(socket_info_t *info)
+{
+	if (info->fd > 0)
+		close(info->fd);
+	
+	info->fd = -1;
+	
+	return 0;
+}
+
+int socket_udp_recv(socket_info_t *iface, void *data, int size);
+int socket_udp_send(socket_info_t *iface, void *data, int size);
+int socket_tcp_recv(socket_info_t *iface, void *data, int size);
+int socket_tcp_send(socket_info_t *iface, void *data, int size);
+
+int socket_recv(socket_info_t *iface, void *data, int size)
+{
+	if (!iface || !data || !size)
+		return -1;
+
+	switch (iface->type) {
+		case TYPE_UDP:
+			return socket_udp_recv(iface, data, size);
+
+		case TYPE_TCP:
+			return socket_tcp_recv(iface, data, size);
+		
+		default:
+			break;
+	}
+
+	return -1;
+}
+
+int socket_send(socket_info_t *iface, void *data, int size)
+{
+	if (!iface || !data || !size)
+		return -1;
+
+	switch (iface->type) {
+		case TYPE_UDP:
+			return socket_udp_send(iface, data, size);
+
+		case TYPE_TCP:
+			return socket_tcp_send(iface, data, size);
+		
+		default:
+			break;
+	}
+
+	return -1;
+}
 
 /*
  * tcp socket api
@@ -226,6 +268,7 @@ int socket_tcp_server_init(socket_info_t *iface)
 		socket_close(iface);
 		err = -1;
 	} else {
+		iface->type = TYPE_TCP;
 		err = 0;
 	}
 
@@ -273,6 +316,7 @@ int socket_tcp_client_init(socket_info_t *iface)
 		socket_close(iface);
 		err = -1;
 	} else {
+		iface->type = TYPE_TCP;
 		err = 0;
 	}
 
@@ -281,8 +325,45 @@ int socket_tcp_client_init(socket_info_t *iface)
     return err;
 }
 
+int socket_tcp_send(socket_info_t *iface, void *data, int size)
+{
+	int nbyte=0,sent=0;
+	
+	while(sent != size){
+		nbyte = write(iface->fd, &((unsigned char *)data)[sent], size-sent);
+		if(nbyte < 0){
+			if(nbyte == EAGAIN)
+				continue;
+			else
+				break;
+		}
+		sent += nbyte;
+	}
 
+	if(nbyte < 0)
+		fprintf(stderr, "%s failed: %s:%s nbyte %d fd %d\n", __func__, iface->addr, iface->port, nbyte, iface->fd);
 
+	return nbyte;
+}
+
+int socket_tcp_recv(socket_info_t *iface, void *data, int size)
+{
+
+	int len=0,nbyte=0;
+	do{
+		nbyte = read(iface->fd, &((unsigned char *)data)[len], size);
+		if(nbyte < 0){
+			if(nbyte == EAGAIN){
+				continue;
+			}else{
+				break;
+			}
+		}
+		len += nbyte;
+	}while(nbyte != 0 && len < size);
+
+	return len;
+}
 
 /*
  * udp socket api
@@ -361,6 +442,7 @@ int socket_udp_init(socket_info_t *iface)
 		socket_close(iface);
 		err = -1;
 	} else {
+		iface->type = TYPE_UDP;
 		err = 0;
 	}
 
@@ -381,7 +463,7 @@ int socket_udp_send(socket_info_t *iface, void *data, int size)
 	nbyte = sendto(iface->fd, data, size, MSG_DONTWAIT | MSG_NOSIGNAL, 
 						(struct sockaddr*)&address, sizeof(address));
 	if(nbyte < 0)
-		fprintf(stderr, "Socket_udp_send failed: %s:%s nbyte %d fd %d\n", iface->addr, iface->port, nbyte, iface->fd);
+		fprintf(stderr, "%s failed: %s:%s nbyte %d fd %d\n", __func__, iface->addr, iface->port, nbyte, iface->fd);
 	
 	return nbyte;
 }

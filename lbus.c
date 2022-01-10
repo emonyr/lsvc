@@ -72,7 +72,7 @@ int lbus_msg_broadcast(lbus_endpoint_t *ep,void *msg)
 	sprintf(m->iface.addr, "%s", ep->iface.addr);
 	sprintf(m->iface.port, "%s", LBUS_UDP_PORT);	// sendto broker port
 	
-	nbyte = socket_udp_send(&m->iface, m, LMSG_HEADER_SIZE + m->size);
+	nbyte = socket_send(&m->iface, m, LMSG_HEADER_SIZE + m->size);
 	if (nbyte < 0)
 		log_err("error: %s\n", strerror(errno));
 	parallel_spin_unlock(&ep->lock);
@@ -148,7 +148,7 @@ void lbus_udp_push_routine(void *data)
     while(ep->running) {
 		usleep(5000);	//sleep 5ms to release CPU
 		
-		nbyte = socket_udp_recv(&ep->iface, m, LMSG_MAX_SIZE);
+		nbyte = socket_recv(&ep->iface, m, LMSG_MAX_SIZE);
 		if (nbyte > 0) {
 			// log_debug("### recv nbyte %d\n\n",nbyte);
 
@@ -338,7 +338,7 @@ int lbus_direct_send(lbus_endpoint_t *ep, void *msg)
 	sprintf(iface.addr, "%s", ep->iface.addr);
 	sprintf(iface.port, "%d", ntohs(m->iface.des.sin_port));
 	
-	nbyte = socket_udp_send(&iface, m, LMSG_HEADER_SIZE + m->size);
+	nbyte = socket_send(&iface, m, LMSG_HEADER_SIZE + m->size);
 	if (nbyte < 0)
 		log_err("error: %s\n", strerror(errno));
 
