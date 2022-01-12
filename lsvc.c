@@ -10,7 +10,6 @@
 #include "lsvc.h"
 
 
-static lbus_endpoint_t self_endpoint = {0};
 static int saved_argc = 0;
 static const char **saved_argv = NULL;
 char *dummy_argv[] = {"lsvc"};
@@ -146,6 +145,7 @@ void lsvc_service_init(void)
 		if ((*svc)->init)
 			(*svc)->init(r);
 	}
+	return;
 }
 
 void lsvc_service_exit(void)
@@ -179,7 +179,7 @@ int lsvc_shell_routine(void *msg, void *userdata)
 
 void *lsvc_runtime_init(void)
 {
-	int err;
+	void *callback;
 	
 	if (!saved_argv) {
 		saved_argv = dummy_argv;
@@ -187,22 +187,18 @@ void *lsvc_runtime_init(void)
 	}
 	
 	if (saved_argc < 2) {
-		self_endpoint.recv_cb = lsvc_handle_bus_call_routine;
+		callback = lsvc_handle_bus_call_routine;
 	}else{
-		self_endpoint.recv_cb = lsvc_shell_routine;
+		callback = lsvc_shell_routine;
 	}
 	
-	self_endpoint.userdata = &g_lsvc;
-	self_endpoint.runtime = &g_lsvc;
-	g_lsvc.priv = &self_endpoint;
-	err = lbus_endpoint_create(g_lsvc.priv);
-	if (err < 0) {
-		log_err("Failed to create endpoint\n");
+	g_lsvc.priv = lbus_endpoint_create("lsvc", NULL, NULL, callback, &g_lsvc);
+	if (!g_lsvc.priv) {
+		log_err("Failed to create lsvc endpoint\n");
 		return NULL;
 	}
 	
 	g_lsvc.running = 1;
-	sprintf(self_endpoint.name, "%s", "lsvc");
 	
 	return &g_lsvc;
 }
@@ -273,6 +269,8 @@ void lsvc_shutdown(void *runtime)
 	}
 	
 	r->running = 0;
+	lbus_endpoint_destroy(r->priv);
+	r->priv = NULL;
 }
 
 int lsvc_event_send(int event, unsigned char *data, unsigned int size, 
@@ -280,31 +278,37 @@ int lsvc_event_send(int event, unsigned char *data, unsigned int size,
 {
 	int err;
 	lbus_msg_t *src_msg = _msg;
-	lbus_msg_t *msg = lbus_msg_new(size);
-	if (!msg) {
+	lbus_msg_t *m;
+	lsvc_runtime_t *r;
+	
+	r = lsvc_runtime_get();
+	if (!r) {
+		log_err("Invalid runtime\n");
+		return -1;
+	}
+	
+	m = lbus_msg_new(size);
+	if (!m) {
 		log_err("Failed to alloc msg buffer\n");
 		return -1;
 	}
 	
-	msg->event = event;
-	memcpy(msg->payload, data, size);
-	msg->flags = flags;
+	m->event = event;
+	memcpy(m->payload, data, size);
+	m->flags = flags;
 
-	if ((msg->flags & LMSG_RESPONSE) && src_msg) {
-		/* 
-		 * Broker put original source info into src_msg->iface.des,
-		 * now we use it to send back response
-		 */
-		memcpy(&msg->iface.des, &src_msg->iface.des, sizeof(src_msg->iface.des));
+	if ((m->flags & LMSG_RESPONSE) && src_msg) {
+		memcpy(&m->src, &src_msg->src, sizeof(src_msg->src));
+		return lbus_msg_respond(r->priv, m);
 	}
 	
-	if (msg->flags & LMSG_BUS_CALL) {
-		err = lsvc_bus_call(NULL, msg);
+	if (m->flags & LMSG_BUS_CALL) {
+		err = lsvc_bus_call(NULL, m);
 	} else {
-		err = lsvc_thread_call(NULL, msg);
+		err = lsvc_thread_call(NULL, m);
 	}
 	
-	lbus_msg_destroy(msg);
+	lbus_msg_destroy(m);
 	
 	return err;
 }

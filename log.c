@@ -23,7 +23,7 @@ int log_svc_state(const void *_msg)
 	//log_to_file("/tmp/log.log", "%d\n", s->v);
 
 	return lsvc_event_send(LOG_EV_REPORT_STATE, s, sizeof(log_svc_state_t), 
-							LMSG_RESPONSE|LMSG_BUS_CALL, _msg);
+							LMSG_RESPONSE, _msg);
 }
 
 
@@ -141,7 +141,7 @@ int log_set_level(log_level_t level)
 
 int log_svc_init(void *runtime)
 {
-	log_set_level(LOG_LEVEL_INFO);
+	// log_set_level(LOG_LEVEL_INFO);
 	return 0;
 }
 

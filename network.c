@@ -36,7 +36,7 @@ int network_svc_state(const void *_msg)
 	network_svc_state_t *s = &network_state;
 
 	return lsvc_event_send(NETWORK_EV_GET_STATE, s, sizeof(network_svc_state_t),
-							LMSG_RESPONSE|LMSG_BUS_CALL, _msg);
+							LMSG_RESPONSE, _msg);
 }
 
 typedef struct {
@@ -169,13 +169,13 @@ int network_ping(const char *des, unsigned int count)
 	network_ping_t ping_info = {0};
 	network_ping_t *p = &ping_info;
 	
-	if (!des || socket_get_host_ip(des, p->sock.addr) != 0) {
+	if (!des || socket_get_host_ip(des, p->sock.des.addr) != 0) {
 		log_err("Invalid address to ping\n");
 		goto out;
 	}
 
 	count = count == 0 ? 1 : count;
-	log_info("pinging %s (%s) %d times\n", des, p->sock.addr, count);
+	log_info("Try to ping %s (%s) %d times\n", des, p->sock.des.addr, count);
 
 	if ((p->sock.fd = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP))< 0) {
 		log_err("Failed to create socket\n");
@@ -192,14 +192,14 @@ int network_ping(const char *des, unsigned int count)
 
 		if (network_ping_recv(try,p) == 0) {
 			log_debug("%d bytes from %s (%s) icmp_seq=%d time=%f ms\n",
-						p->rx_len, des, p->sock.addr, try, p->ttime/1000.0);
+						p->rx_len, des, p->sock.des.addr, try, p->ttime/1000.0);
 			success++;
 		}
 	}
 
 out:
 	socket_close(&p->sock);
-	log_info("ping %s (%s) %d/%d packet received\n", des, p->sock.addr, success, try);
+	log_info("ping %s (%s) %d/%d packet received\n", des, p->sock.des.addr, success, try);
 	return success == count ? 0 : -1;
 }
 

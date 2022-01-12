@@ -100,13 +100,14 @@ int socket_set_broadcast(int fd, int val)
 	return 0;
 }
 
-int socket_bind(socket_info_t *info)
-{	
-    info->src.sin_family = AF_INET;
-    info->src.sin_addr.s_addr = inet_addr(info->addr);
-	info->src.sin_port = htons(atoi(info->port));
+int socket_bind(socket_info_t *iface)
+{
+	struct sockaddr_in address;
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = inet_addr(iface->des.addr);
+	address.sin_port = htons(atoi(iface->des.port));
 	
-	if (bind(info->fd, (struct sockaddr *)&info->src, sizeof(struct sockaddr)) != 0) {
+	if (bind(iface->fd, (struct sockaddr *)&address, sizeof(struct sockaddr)) != 0) {
 		fprintf(stderr, "%s failed: %s\n", __func__, strerror(errno));
 		return -1;
 	}
@@ -114,9 +115,9 @@ int socket_bind(socket_info_t *info)
 	return 0;
 }
 
-int socket_listen(socket_info_t *info)
+int socket_listen(socket_info_t *iface)
 {	
-	if (listen(info->fd, 1024) != 0) {
+	if (listen(iface->fd, 1024) != 0) {
 		fprintf(stderr, "%s failed: %s\n", __func__, strerror(errno));
 		return -1;
 	}
@@ -124,22 +125,23 @@ int socket_listen(socket_info_t *info)
 	return 0;
 }
 
-int socket_connect(socket_info_t *info)
+int socket_connect(socket_info_t *iface)
 {	
 	int err;
-	char ip[SOCKET_ADDR_MAX] = {0};
+	char ip[SOCKET_ADDR_MAX]={0};
+	struct sockaddr_in address={0};
 
-	err = socket_get_host_ip(info->addr, ip);
+	err = socket_get_host_ip(iface->des.addr, ip);
 	if (err) {
 		fprintf(stderr, "%s failed: %s\n", __func__, strerror(errno));
 		return -1;
 	}
 
-    info->des.sin_family = AF_INET;
-    info->des.sin_addr.s_addr = inet_addr(ip);
-	info->des.sin_port = htons(atoi(info->port));
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = inet_addr(ip);
+	address.sin_port = htons(atoi(iface->des.port));
 	
-	if (connect(info->fd, (struct sockaddr *)&info->des, sizeof(struct sockaddr)) != 0) {
+	if (connect(iface->fd, (struct sockaddr *)&address, sizeof(struct sockaddr)) != 0) {
 		fprintf(stderr, "%s failed: %s\n", __func__, strerror(errno));
 		return -1;
 	}
@@ -164,12 +166,82 @@ int socket_get_host_ip(const char *des, char *output)
 	return 0;
 }
 
-int socket_close(socket_info_t *info)
+int socket_parse_uri(const char *uri, socket_info_t *iface)
 {
-	if (info->fd > 0)
-		close(info->fd);
+	int len=0;
+	char *c,*p;
 	
-	info->fd = -1;
+	c = uri;
+	len = strlen(uri);
+	if (strncmp(c, "udp://", 6) == 0) {
+		iface->type = TYPE_UDP;
+	} else if (strncmp(c, "tcp://", 6) == 0) {
+		iface->type = TYPE_TCP;
+	} else {
+		return -1;
+	}
+
+	c += 6;
+	len -= 5;	// including '\0'
+	p = iface->des.addr;
+	for (int i=0,j=0; i<len; i++,j++) {
+		if (c[i] == ':') {
+			p[j] = '\0';
+			p = iface->des.port;
+			j=0;
+			i++;
+		}
+		
+		p[j] = c[i];
+	}
+
+	return 0;
+}
+
+char _usage[] = "\nUsage: \n										\
+				\t UDP fix port: udp://127.0.0.1:18080\n		\
+				\t UDP random port: udp://127.0.0.1:0\n			\
+				\t TCP client: tcp://127.0.0.1:8080\n			\
+				\t TCP server: tcp://:8080\n					\
+				\n";
+
+int socket_open(const char *uri, socket_info_t *iface)
+{
+	int err=-1;
+
+	if (!iface || !uri) {
+		fprintf(stderr, "Invalid param: iface %p, uri %p\n", iface, uri);
+		return -1;
+	}
+
+	memset(iface, 0, sizeof(socket_info_t));
+	err = socket_parse_uri(uri, iface);
+	if (err) 
+		goto failed;
+
+	if (iface->type == TYPE_UDP && strlen(iface->des.addr) > 0) {
+		err = socket_udp_init(iface);
+	} else if (iface->type == TYPE_TCP && atoi(iface->des.port) > 0 && strlen(iface->des.addr) > 0) {
+		err = socket_tcp_client_init(iface);
+	} else if (iface->type == TYPE_TCP && atoi(iface->des.port) > 0 && strlen(iface->des.addr) == 0) {
+		err = socket_tcp_server_init(iface);
+	} else {
+		goto failed;
+	}
+
+	return err;
+
+failed:
+	fprintf(stderr, "%s", _usage);
+	return -1;
+}
+
+int socket_close(socket_info_t *iface)
+{
+	if (iface->fd > 0)
+		close(iface->fd);
+	
+	iface->fd = -1;
 	
 	return 0;
 }
@@ -234,7 +306,7 @@ int socket_tcp_server_init(socket_info_t *iface)
 	hints.ai_addr = NULL;
 	hints.ai_next = NULL;
 
-	err = getaddrinfo(NULL, iface->port, &hints, &result);
+	err = getaddrinfo(NULL, iface->des.port, &hints, &result);
 	if(err != 0){
 		fprintf(stderr, "%s failed: %s\n", __func__, gai_strerror(err));
 		return -1;
@@ -268,7 +340,6 @@ int socket_tcp_server_init(socket_info_t *iface)
 		socket_close(iface);
 		err = -1;
 	} else {
-		iface->type = TYPE_TCP;
 		err = 0;
 	}
 
@@ -291,7 +362,7 @@ int socket_tcp_client_init(socket_info_t *iface)
 	hints.ai_addr = NULL;
 	hints.ai_next = NULL;
 
-	err = getaddrinfo(iface->addr, iface->port, &hints, &result);
+	err = getaddrinfo(iface->des.addr, iface->des.port, &hints, &result);
 	if(err != 0){
 		fprintf(stderr, "%s failed: %s\n", "getaddrinfo", gai_strerror(err));
 		return -1;
@@ -316,7 +387,6 @@ int socket_tcp_client_init(socket_info_t *iface)
 		socket_close(iface);
 		err = -1;
 	} else {
-		iface->type = TYPE_TCP;
 		err = 0;
 	}
 
@@ -341,7 +411,7 @@ int socket_tcp_send(socket_info_t *iface, void *data, int size)
 	}
 
 	if(nbyte < 0)
-		fprintf(stderr, "%s failed: %s:%s nbyte %d fd %d\n", __func__, iface->addr, iface->port, nbyte, iface->fd);
+		fprintf(stderr, "%s failed: %s:%s nbyte %d fd %d\n", __func__, iface->des.addr, iface->des.port, nbyte, iface->fd);
 
 	return nbyte;
 }
@@ -410,7 +480,7 @@ int socket_udp_init(socket_info_t *iface)
 	hints.ai_addr = NULL;
 	hints.ai_next = NULL;
 
-	err = getaddrinfo(NULL, iface->port, &hints, &result);
+	err = getaddrinfo(NULL, iface->des.port, &hints, &result);
 	if(err != 0){
 		fprintf(stderr, "%s failed: %s\n", "getaddrinfo", gai_strerror(err));
 		return -1;
@@ -442,7 +512,6 @@ int socket_udp_init(socket_info_t *iface)
 		socket_close(iface);
 		err = -1;
 	} else {
-		iface->type = TYPE_UDP;
 		err = 0;
 	}
 
@@ -454,24 +523,34 @@ int socket_udp_init(socket_info_t *iface)
 int socket_udp_send(socket_info_t *iface, void *data, int size)
 {
 	int nbyte;
-	struct sockaddr_in address = {0};
+	struct sockaddr_in address={0};
 		
 	address.sin_family = AF_INET;
-	address.sin_addr.s_addr = inet_addr(iface->addr);
-	address.sin_port = htons(atoi(iface->port));
+	address.sin_addr.s_addr = inet_addr(iface->des.addr);
+	address.sin_port = htons(atoi(iface->des.port));
 	
 	nbyte = sendto(iface->fd, data, size, MSG_DONTWAIT | MSG_NOSIGNAL, 
 						(struct sockaddr*)&address, sizeof(address));
 	if(nbyte < 0)
-		fprintf(stderr, "%s failed: %s:%s nbyte %d fd %d\n", __func__, iface->addr, iface->port, nbyte, iface->fd);
+		fprintf(stderr, "%s failed: %s:%s nbyte %d fd %d\n", __func__, iface->des.addr, iface->des.port, nbyte, iface->fd);
 	
 	return nbyte;
 }
 
 int socket_udp_recv(socket_info_t *iface, void *data, int size)
 {
-	return recvfrom(iface->fd, data, size, 0, 
-						(struct sockaddr*)&iface->src, &iface->src_len);
+	int nbyte=0,len=sizeof(struct sockaddr_in);
+	struct sockaddr_in address={0};
+
+	nbyte = recvfrom(iface->fd, data, size, 0, 
+						(struct sockaddr*)&address, &len);
+
+	sprintf(iface->src.addr, "%s", inet_ntoa(address.sin_addr));
+	sprintf(iface->src.port, "%d", ntohs(address.sin_port));
+	if (nbyte < 0)
+		fprintf(stderr, "%s failed: %s:%s nbyte %d fd %d\n", __func__, iface->src.addr, iface->src.port, nbyte, iface->fd);
+
+	return nbyte;
 }
 
 

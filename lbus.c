@@ -14,7 +14,8 @@
 #include "log.h"
 #include "lbus.h"
 
-#define LBUS_UDP_PORT "13333"
+#define LBUS_HOST "127.0.0.1"
+#define LBUS_PORT "13333"
 
 lbus_broker_t broker = {0};
 
@@ -62,106 +63,23 @@ void lbus_msg_destroy(void *msg)
 int lbus_msg_broadcast(lbus_endpoint_t *ep,void *msg)
 {
 	int nbyte;
+	char uri[TRANSPORT_MAX_URI]={0};
 	lbus_msg_t *m = msg;
 	
 	if (!m->msg_id)
 		m->msg_id = utils_timer_now();
 	
 	parallel_spin_lock(&ep->lock);
-	m->iface.fd = ep->iface.fd,
-	sprintf(m->iface.addr, "%s", ep->iface.addr);
-	sprintf(m->iface.port, "%s", LBUS_UDP_PORT);	// sendto broker port
+	sprintf(m->des.addr, "%s", LBUS_HOST);
+	sprintf(m->des.port, "%s", LBUS_PORT);	// sendto broker
+	sprintf(uri, "udp://%s:%s", m->des.addr, m->des.port);
 	
-	nbyte = socket_send(&m->iface, m, LMSG_HEADER_SIZE + m->size);
+	nbyte = transport_xfer(uri, ep->transport, m, LMSG_HEADER_SIZE + m->size);
 	if (nbyte < 0)
-		log_err("error: %s\n", strerror(errno));
+		log_err("Failed to send broadcast msg\n");
 	parallel_spin_unlock(&ep->lock);
 	
 	return nbyte;
-}
-
-int lbus_push_data(lbus_endpoint_t *ep, void *data, int size)
-{
-	int nbyte;
-	
-	struct kmsg *kqueue = ep->queue;
-	
-	parallel_spin_lock(&ep->lock);
-	nbyte = kmsg_push(kqueue, data, size);
-	// log_debug("kmsg_push: nbyte %d kqueue->size %d\n", nbyte, kqueue->size);
-	if (!kqueue->size)
-		log_err("Invalid kqueue size %d\n", kqueue->size);
-	parallel_spin_unlock(&ep->lock);
-	
-	// log_debug("lbus_push_data: nbyte %d\n", nbyte);
-	
-	return nbyte;
-}
-
-int lbus_pop_data(lbus_endpoint_t *ep, void **bucket)
-{
-	int nbyte;
-	
-	if (!ep->running)
-		return -1;
-	
-	parallel_spin_lock(&ep->lock);
-	
-	nbyte = kmsg_check(ep->queue);
-	//log_debug(">>>>>>>>>>>>>kmsg_check: nbyte %d\n", nbyte);
-	if (!nbyte || nbyte < LMSG_HEADER_SIZE) {
-		parallel_spin_unlock(&ep->lock);
-		return -1;
-	}
-	
-	*bucket = lbus_msg_new(nbyte);
-	if (!(*bucket)) {
-		log_err("Failed to create new msg buffer\n");
-		sleep(1);
-		parallel_spin_unlock(&ep->lock);
-		return -1;
-	}
-	
-	nbyte = kmsg_pop(ep->queue, *bucket);
-	if (nbyte < 0) {
-		log_err("Invlid msg: nbyte %d\n", nbyte);
-		lbus_msg_destroy(*bucket);
-		*bucket = NULL;
-		parallel_spin_unlock(&ep->lock);
-		return -1;
-	}
-	parallel_spin_unlock(&ep->lock);
-	
-	//log_debug("nbyte %d\n", nbyte);
-	
-	return nbyte;
-}
-
-void lbus_udp_push_routine(void *data)
-{
-	int nbyte = 0;
-	lbus_msg_t *m = lbus_msg_new(LMSG_MAX_DATA_SIZE);
-    lbus_endpoint_t *ep = (lbus_endpoint_t *)data;
-	
-	assert(m);
-
-    while(ep->running) {
-		usleep(5000);	//sleep 5ms to release CPU
-		
-		nbyte = socket_recv(&ep->iface, m, LMSG_MAX_SIZE);
-		if (nbyte > 0) {
-			// log_debug("### recv nbyte %d\n\n",nbyte);
-
-			/* 
-			 * Copy endpoint source interface info into message, 
-			 * so we can receive response from broker.
-			 */
-			memcpy(&m->iface.src, &ep->iface.src, sizeof(m->iface.src));
-			lbus_push_data(ep,m,nbyte);
-		}
-    }
-	
-	lbus_msg_destroy(m);
 }
 
 int lbus_try_bond(void *msg, void *endpoint)
@@ -177,222 +95,127 @@ int lbus_try_bond(void *msg, void *endpoint)
 	return -1;
 }
 
-void lbus_udp_pop_routine(void *data)
+void *lbus_handle_recv(void *arg, void *data, int nbyte)
 {
-	int nbyte = 0;
-	lbus_msg_t *m = NULL;
-    lbus_endpoint_t *ep = (lbus_endpoint_t *)data;
-
-	ep->timer = utils_timer_start(lbus_send_ping, ep, 0, 2, 1);
-
-    while(ep->running) {
-		usleep(20000);
-		
-		nbyte = lbus_pop_data(ep, &m);
-		if (nbyte > 0 && m && ep->recv_cb) {
-			// log_debug("Pop nbyte %d\n", nbyte);
-			// log_warn("%s m->event: 0x%08X\n", ep->name, m->event);
-			if (!ep->bond && lbus_try_bond(m, ep) == -1) {
-				// Not yet bonded, push back msg to the queue
-				lbus_push_data(ep,m,nbyte);
-			}else{
-				m->payload = lbus_payload_get(m);
-				ep->recv_cb(m, ep->userdata);
-			}
-			
-			lbus_msg_destroy(m);
-			m = NULL;
-		}
+	lbus_endpoint_t *ep = (lbus_endpoint_t *)arg;
+	lbus_msg_t *m = data;
+	
+	if (!m || nbyte <=0) {
+		log_err("Invalid recv data\n");
+		return NULL;
 	}
+	
+	if (!ep->bond) {
+		lbus_try_bond(m, ep);
+	}else{
+		m->payload = lbus_payload_get(m);
+		ep->recv_cb(m, ep->userdata);
+	}
+
+	return NULL;
 }
 
 void lbus_endpoint_destroy(lbus_endpoint_t *ep)
 {
-	if (ep->running == 0)
-		return;
-	
-	ep->running = 0;
 	utils_timer_stop(ep->timer);
-	socket_close(&ep->iface);
-	if (ep->queue)
-		kmsg_delete(ep->queue);
-	mem_free(ep->queue);
+	transport_destroy(ep->transport);
 	memset(ep, 0, sizeof(lbus_endpoint_t));
 }
 
-void *lbus_queue_init(void)
-{
-	int err;
-	void *queue;
-	
-	queue = mem_alloc(sizeof(struct kmsg));
-	if (!queue) {
-		log_err("Failed to allocate queue buffer\n");
-		goto out;
-   	}
-	
-	err = kmsg_new(queue, MAX_MSG_NUMBER * 8192); //128 * 8192
-    if (err < 0) {
-		log_err("Failed to create queue\n");
-		mem_free(queue);
-		queue = NULL;
-		goto out;
-   	}
-	
-out:
-	return queue;
-}
+int lbus_dispatch_callback(void *msg, void *userdata);
 
-int lbus_broker_create(lbus_broker_t *bk)
-{
-	int err;
-	
-	if (bk->running) {
-		log_err("lbus broker already running\n");
-		return 1;
-	}
-	
-	if (!bk->dispatch) {
-		log_err("dispatch function not defined\n");
-		return -1;
-	}
-	
-	bk->ep.recv_cb = bk->dispatch;
-	sprintf(bk->ep.iface.port, "%s", LBUS_UDP_PORT);
-	bk->ep.userdata = bk;
-	bk->ep.runtime = bk->runtime;
-	bk->ep.bond = 1; // broker auto bonded
-	err = lbus_endpoint_create(&bk->ep);
-	if (err < 0) {
-		log_debug("can not create endpoint\n");
+int lbus_broker_init(lbus_broker_t *bk)
+{	
+	parallel_spin_init(&bk->lock);
+	bk->ep = lbus_endpoint_create("broker", LBUS_HOST, LBUS_PORT, lbus_dispatch_callback, bk);
+	if (!bk->ep) {
+		log_debug("Failed to create broker endpoint\n");
 		return -1;
 	}
 	bk->running = 1;
-	sprintf(bk->ep.name, "%s", "broker");
+	bk->ep->bond = 1;	// broker auto bonded
 	
 	return 0;
 }
 
-int lbus_endpoint_create(lbus_endpoint_t *ep)
+void *lbus_endpoint_create(const char *name, const char *host, const char *port, 
+								lbus_endpoint_callback_t *cb, void *userdata)
 {
-	int err = -1;
-	
-	if (ep->running) {
-		log_err("lbus endpoint already running\n");
-		return 1;
+	lbus_endpoint_t *ep;
+
+	if (!cb) {
+		log_err("Invalid endpoint callback\n");
+		return NULL;
+	}
+
+	ep = mem_alloc(sizeof(lbus_endpoint_t));
+	if (!ep) {
+		log_err("Failed to alloc endpoint memory\n");
+		goto failed;
 	}
 	
-	sprintf(ep->iface.addr, "127.0.0.1");
-	
-	err = socket_udp_init(&ep->iface);
-	if (err < 0) {
-		log_err("Udp socket invalid\n");
-		return -1;
-	}
-	
-	INIT_LIST_HEAD(&ep->entry);
+	memset(ep, 0, sizeof(lbus_endpoint_t));
+	sprintf(ep->name, "%s", name?name:"endpoint");
 	parallel_spin_init(&ep->lock);
-	ep->queue = lbus_queue_init();
-	if (!ep->queue) {
-		log_err("Failed to init queue\n");
+	ep->recv_cb = cb;
+	ep->userdata = userdata;
+	sprintf(ep->uri, "udp://%s:%s", host?host:LBUS_HOST, port?port:"0");
+	ep->transport = transport_create(ep->uri, lbus_handle_recv, ep);
+	ep->timer = utils_timer_start(lbus_send_ping, ep, 0, 2, 1);
+	if (!ep->timer) {
+		log_err("Failed to create endpoint timer\n");
 		goto failed;
 	}
 	
-	ep->running = 1;
-	ep->t[0].routine = lbus_udp_push_routine;
-	ep->t[0].arg = ep;
-	err = parallel_thread_create(&ep->t[0]);
-	if (err) {
-		log_err("Failed to create push routine: err %d\n", err);
-		goto failed;
-	}
-	
-	ep->running = 1;
-	ep->t[1].routine = lbus_udp_pop_routine;
-	ep->t[1].arg = ep;
-	err = parallel_thread_create(&ep->t[1]);
-	if (err) {
-		log_err("Failed to create pop routine: err %d\n", err);
-		goto failed;
-	}
-	
-	return err;
+	return ep;
 
 failed:
 	lbus_endpoint_destroy(ep);
-	return err;
+	return NULL;
 }
 
-int lbus_direct_send(lbus_endpoint_t *ep, void *msg)
+int lbus_msg_respond(lbus_endpoint_t *ep, void *msg)
 {
 	int nbyte;
+	char uri[TRANSPORT_MAX_URI]={0};
 	lbus_msg_t *m = msg;
-	socket_info_t iface = {0};
 
-	if (ep->iface.fd <= 0 || m->iface.des.sin_port <= 0) {
-		log_err("Invalid param: fd %d port %d\n", ep->iface.fd, ntohs(m->iface.des.sin_port));
-		return -1;
-	}
-
-	iface.fd = ep->iface.fd;
-	sprintf(iface.addr, "%s", ep->iface.addr);
-	sprintf(iface.port, "%d", ntohs(m->iface.des.sin_port));
+	memcpy(&m->des, &m->src, sizeof(m->src));
+	sprintf(uri, "udp://%s:%s", m->des.addr, m->des.port);
 	
-	nbyte = socket_send(&iface, m, LMSG_HEADER_SIZE + m->size);
+	nbyte = transport_xfer(uri, ep->transport, m, LMSG_HEADER_SIZE + m->size);
 	if (nbyte < 0)
-		log_err("error: %s\n", strerror(errno));
+		log_err("Failed to send direct msg\n");
 
 	return nbyte;
 }
 
 int lbus_send_ping(lbus_endpoint_t *ep)
 {
-	int err;
-	lbus_msg_t *msg = NULL;
-
+	lbus_msg_t msg={0};
+	
 	if (ep->bond)
 		return 0;
 	
-	msg = lbus_msg_new(sizeof(lbus_endpoint_t));
-	if (!msg) {
-		log_err("Failed to alloc lbus msg buffer\n");
-		return -1;
-	}
+	msg.event = LBUS_EV_PING;
 	
-	msg->event = LBUS_EV_PING;	
-	memcpy(msg->payload,ep,sizeof(lbus_endpoint_t)); 		
-	
-	err = lbus_msg_broadcast(ep, msg);
-	lbus_msg_destroy(msg);
-	
-	return err;
+	return lbus_msg_broadcast(ep, &msg);
 }
 
 int lbus_send_pong(lbus_endpoint_t *ep, void *_msg)
 {
-	int err;
 	lbus_msg_t *src_msg = _msg;
-	lbus_msg_t *msg = NULL;
+	lbus_msg_t msg={0};
 	
-	if (!ep) {
+	if (!ep || !src_msg) {
 		log_err("Invalid pointer\n");
 		return -1;
 	}
+
+	msg.event = LBUS_EV_PONG;
+	memcpy(&msg.src, &src_msg->src, sizeof(src_msg->src));
 	
-	msg = lbus_msg_new(sizeof(lbus_endpoint_t));
-	if (!msg) {
-		log_err("Failed to alloc msg buffer\n");
-		return -1;
-	}
-	
-	msg->event = LBUS_EV_PONG;
-	memcpy(msg->payload, ep, sizeof(lbus_endpoint_t));
-	memcpy(&msg->iface.des, &src_msg->iface.src, sizeof(msg->iface.des));
-	
-	err = lbus_direct_send(ep, msg);
-	lbus_msg_destroy(msg);
-	
-	return err;
+	return lbus_msg_respond(ep, &msg);
 }
 
 int lbus_route_table_update(lbus_msg_t *msg)
@@ -400,20 +223,19 @@ int lbus_route_table_update(lbus_msg_t *msg)
 	int err = 0;
 	lbus_broker_t *bk = &broker;
 	lbus_endpoint_t *target, *ep;
-	int value = ntohs(bk->ep.iface.src.sin_port);
-	char port[24] = {0};
+	char uri[TRANSPORT_MAX_URI] = {0};
 	
-	if (!value || value == atoi(LBUS_UDP_PORT)) {
+	if (atoi(msg->src.port) <= 0 || 
+		strcmp(msg->src.port, LBUS_PORT) == 0) {
 		log_debug("Ignoring invalid port\n");
 		return -1;
 	}
 	
 	parallel_spin_lock(&bk->lock);
-	memcpy(&msg->iface.src, &bk->ep.iface.src, sizeof(msg->iface.src));
-	sprintf(port, "%d", ntohs(bk->ep.iface.src.sin_port));
-	log_debug("Handling port: %s\n", port);
+	sprintf(uri, "udp://%s:%s", msg->src.addr, msg->src.port);
+	log_debug("Handling address: %s\n", uri);
 	
-	target = kvlist_get(&bk->route_table, port);
+	target = kvlist_get(&bk->route_table, uri);
 	if (target) {
 		err = -1;
 		goto out;
@@ -425,10 +247,10 @@ int lbus_route_table_update(lbus_msg_t *msg)
 		goto out;
 	}
 	
-	memcpy(ep, &bk->ep, sizeof(lbus_endpoint_t));
-	kvlist_set(&bk->route_table, port, (void *)ep);
+	sprintf(ep->uri, "%s", uri);
+	kvlist_set(&bk->route_table, uri, (void *)ep);
 	list_add_tail(&ep->entry, &bk->peers);
-	log_info("new port added: %s\n", port);
+	log_info("New endpoint added: %s\n", ep->uri);
 	
 out:
 	parallel_spin_unlock(&bk->lock);
@@ -438,7 +260,7 @@ out:
 int lbus_dispatch_callback(void *msg, void *userdata)
 {
 	int nbyte;
-	lbus_broker_t *bk = &broker;
+	lbus_broker_t *bk = userdata;
 	lbus_msg_t *m = msg;
 	lbus_endpoint_t *target, *tmp;
 	
@@ -450,31 +272,25 @@ int lbus_dispatch_callback(void *msg, void *userdata)
 		log_err("Invalid broker\n");
 		return -1;
 	}
+
+	/* 
+	 * Copy source address into message destination, 
+	 * so services can send response to it.
+	 */
+	memcpy(&m->src, &bk->ep->transport->iface.src, sizeof(bk->ep->transport->iface.src));
 	
 	/* Respond to LBUS event directly */
 	if (lsvc_valid_event(m->event, LSVC_LBUS_EVENT))
 		return lsvc_thread_call(NULL, m);
 	
-	
-	if (m->flags & LMSG_RESPONSE) {
-		log_debug("Handle lbus response 0x%08X\n", m->event);
-		return lbus_direct_send(&bk->ep, m);
-	}
-	
 	/* Broadcast message to each recorded endpoint */
 	list_for_each_entry_safe(target,tmp, &bk->peers, entry) {
-		/* 
-		 * Copy message source interface info into destination, 
-		 * so services can send response to it.
-		 */
-		memcpy(&m->iface.des, &m->iface.src, sizeof(m->iface.des));
-		nbyte = sendto(bk->ep.iface.fd, m, LMSG_HEADER_SIZE + m->size, 
-						MSG_DONTWAIT | MSG_NOSIGNAL, 
-						(struct sockaddr*)&target->iface.src, sizeof(target->iface.src));
-		if (nbyte < 0)
-			log_err("Failed to send: port %d\n", ntohs(target->iface.src.sin_port));
-		if (nbyte > 0)
-			log_debug("Msg sent to port: %d\n", ntohs(target->iface.src.sin_port));
+		nbyte = transport_xfer(target->uri, bk->ep->transport, m, LMSG_HEADER_SIZE + m->size);
+		if (nbyte <= 0) {
+			log_err("Failed sending to endpoint: %s\n", target->uri);
+		} else {
+			log_debug("Msg 0x%08X sent to endpoint: %s\n", m->event, target->uri);
+		}
 	}
 	
 	return 0;
@@ -490,16 +306,13 @@ int lbus_svc_init(void *runtime)
 	int err;
 	lbus_broker_t *bk = &broker;
 	
-	parallel_spin_init(&bk->lock);
 	INIT_LIST_HEAD(&bk->peers);
 	kvlist_init(&bk->route_table, kvlist_strlen);
 	
-	bk->dispatch = lbus_dispatch_callback;
-	bk->runtime = runtime;
-	err = lbus_broker_create(bk);
+	err = lbus_broker_init(bk);
 	if (err < 0) {
 		log_err("Failed to create broker, skip\n");
-		lbus_endpoint_destroy(&bk->ep);
+		lbus_endpoint_destroy(bk->ep);
 		return -1;
 	}
 	
@@ -554,7 +367,7 @@ int lbus_svc_ioctl(void *runtime, void *_msg)
 	switch(msg->event) {
 		case LBUS_EV_PING:
 			if (!lbus_route_table_update(msg))
-				err = lbus_send_pong(&bk->ep, msg);
+				err = lbus_send_pong(bk->ep, msg);
 		break;
 	}
 	

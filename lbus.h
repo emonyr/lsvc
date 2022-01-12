@@ -9,6 +9,7 @@ extern "C" {
 #include "list.h"
 #include "kvlist.h"
 #include "parallel.h"
+#include "transport.h"
 #include "lsvc.h"
 
 typedef enum {
@@ -29,34 +30,31 @@ typedef struct {
 	unsigned int msg_id;
 	unsigned int size;
 	unsigned int flags;
-	socket_info_t iface;
+	socket_addr_t src;
+	socket_addr_t des;
 	unsigned char *payload;
 }__attribute__ ((packed))lbus_msg_t;
 
-#define LMSG_MAX_SIZE 65535
+#define LMSG_MAX_SIZE 10240
 #define LMSG_HEADER_SIZE (sizeof(lbus_msg_t))
 #define LMSG_MAX_DATA_SIZE (LMSG_MAX_SIZE - LMSG_HEADER_SIZE)
 
 typedef struct{
 	char name[32];
-	int running;
 	int bond;
 	int (*recv_cb)(void *msg,void *userdata);
-	void *runtime;
-	void *queue;
 	void *userdata;
 	void *timer;
-	parallel_thread_t t[2];
+	char uri[TRANSPORT_MAX_URI];
+	transport_t *transport;
 	parallel_spin_t lock;
-	socket_info_t iface;
 	struct list_head entry;
 }__attribute__ ((packed))lbus_endpoint_t;
 
 typedef struct {
 	int running;
-	void *runtime;
 	int (*dispatch)(void *msg,void *userdata);
-	lbus_endpoint_t ep;
+	lbus_endpoint_t *ep;
 	parallel_spin_t lock;
 	struct list_head peers;
 	struct kvlist route_table;
@@ -69,11 +67,13 @@ extern void lbus_msg_destroy(void *msg);
 extern int lbus_send_ping(lbus_endpoint_t *ep);
 extern int lbus_send_pong(lbus_endpoint_t *ep, void *src_msg);
 
-extern int lbus_borker_create(lbus_broker_t *bk);
-extern int lbus_endpoint_create(lbus_endpoint_t *ep);
+typedef void *(lbus_endpoint_callback_t)(void *, void*);
+extern void *lbus_endpoint_create(const char *name, const char *host, const char *port, 
+								lbus_endpoint_callback_t *cb, void *userdata);
 extern void lbus_endpoint_destroy(lbus_endpoint_t *ep);
 
 extern int lbus_msg_broadcast(lbus_endpoint_t *ep,void *msg);
+extern int lbus_msg_respond(lbus_endpoint_t *ep, void *msg);
 
 extern lsvc_t lbus_svc;
 
