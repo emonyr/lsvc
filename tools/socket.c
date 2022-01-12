@@ -379,7 +379,10 @@ int socket_tcp_client_init(socket_info_t *iface)
 		if(socket_set_close_on_exec(iface->fd, 1))
 			continue;
 		
-		if(socket_connect(iface) == 0)
+		if(socket_connect(iface))
+			continue;
+
+		if(socket_set_non_block(iface->fd, 1) == 0)
 			break;
 	}
 
@@ -418,7 +421,6 @@ int socket_tcp_send(socket_info_t *iface, void *data, int size)
 
 int socket_tcp_recv(socket_info_t *iface, void *data, int size)
 {
-
 	int len=0,nbyte=0;
 	do{
 		nbyte = read(iface->fd, &((unsigned char *)data)[len], size);
