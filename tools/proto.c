@@ -268,7 +268,7 @@ void *proto_json_str_get(proto_cache_t *c, const char *path)
 	if (!n)
 		return NULL;
 
-	return n->valuestring;
+	return n->valuestring ? n->valuestring : n->string;
 }
 
 int proto_json_str_add(proto_cache_t *c, const char *path, 
