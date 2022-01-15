@@ -29,7 +29,7 @@
 #define ICMP_HEADSIZE 8
 #define PACKET_SIZE 1024
 
-network_svc_state_t network_state = {0};
+network_svc_state_t network_state;
 
 int network_svc_state(const void *_msg)
 {
@@ -166,9 +166,10 @@ int network_ping(const char *des, unsigned int count)
 {
 	int try=0,success=0;
 	
-	network_ping_t ping_info = {0};
+	network_ping_t ping_info;
 	network_ping_t *p = &ping_info;
 	
+	memset(p, 0, sizeof(network_ping_t));
 	if (!des || socket_get_host_ip(des, p->sock.des.addr) != 0) {
 		log_err("Invalid address to ping\n");
 		goto out;
@@ -207,7 +208,7 @@ int network_eth_info_update(const char *eth_inf)
 {
 	int sock;
 	struct sockaddr_in *p_sin;
-	struct ifreq ifr = {0};
+	struct ifreq ifr;
 	network_svc_state_t *s = &network_state;
 	
 	if (!eth_inf) {
@@ -215,6 +216,7 @@ int network_eth_info_update(const char *eth_inf)
 		return -1;
 	}
 	
+	memset(&ifr, 0, sizeof(struct ifreq));
 	sock = socket(AF_INET, SOCK_STREAM, 0);
 	if (sock < 0) {
 		log_err("Get %s mac address socket creat error\n", eth_inf);
@@ -325,6 +327,7 @@ int network_svc_init(void *runtime)
 {
 	network_svc_state_t *s = &network_state;
 	
+	memset(s, 0, sizeof(network_svc_state_t));
 	s->v = NW_WIFI_DISCONNECTED;
 
 	//s->tid = utils_timer_start(network_state_report,s,1,5,1);
@@ -362,8 +365,8 @@ int network_svc_getopt(int argc, const char *argv[], void **msg)
 	}
 
 	m = *msg;
-	ctl = m->payload;
-	while((opt = getopt(argc, argv, "vp:c:")) != -1) {
+	ctl = (void *)m->payload;
+	while((opt = getopt(argc, (void *)argv, "vp:c:")) != -1) {
 		switch (opt) {
 			case 'v':
 				m->event = NETWORK_EV_GET_STATE;
@@ -395,7 +398,7 @@ int network_svc_ioctl(void *runtime, void *_msg)
 {
 	int err = -1;
 	lbus_msg_t *msg = _msg;
-	network_ctl_t *ctl = msg->payload;
+	network_ctl_t *ctl = (void *)msg->payload;
 
 	switch(msg->event) {
 		case NETWORK_EV_GET_STATE:

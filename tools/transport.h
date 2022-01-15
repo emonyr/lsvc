@@ -5,6 +5,7 @@
 extern "C" {
 #endif
 
+#include "list.h"
 #include "socket.h"
 #include "parallel.h"
 
@@ -20,6 +21,7 @@ typedef struct {
 	void *arg;
 	socket_info_t iface;
 	parallel_thread_t thread;
+	struct list_head li;
 }transport_t;
 
 extern void *transport_create(const char *uri, transport_callback_t *cb, void *arg);

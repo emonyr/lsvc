@@ -182,7 +182,7 @@ void *lsvc_runtime_init(void)
 	void *callback;
 	
 	if (!saved_argv) {
-		saved_argv = dummy_argv;
+		saved_argv = (void *)dummy_argv;
 		saved_argc = ARRAY_SIZE(dummy_argv);
 	}
 	
@@ -230,7 +230,7 @@ int lsvc_handle_sys_command(int argc, const char *argv[])
 
 		if ((*svc)->getopt) {
 			msg = NULL;
-			err = (*svc)->getopt(argc, &argv[0], &msg);
+			err = (*svc)->getopt(argc, &argv[0], (void *)&msg);
 			
 			if (err) {
 				log_err("Failed to match module event\n");
@@ -273,11 +273,11 @@ void lsvc_shutdown(void *runtime)
 	r->priv = NULL;
 }
 
-int lsvc_event_send(int event, unsigned char *data, unsigned int size, 
-						unsigned int flags, const void *_msg)
+int lsvc_event_send(int event, void *data, unsigned int size, 
+						unsigned int flags, void *_src_msg)
 {
 	int err;
-	lbus_msg_t *src_msg = _msg;
+	lbus_msg_t *src_msg = _src_msg;
 	lbus_msg_t *m;
 	lsvc_runtime_t *r;
 	

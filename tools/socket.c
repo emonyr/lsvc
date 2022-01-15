@@ -8,6 +8,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/select.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
@@ -125,11 +126,29 @@ int socket_listen(socket_info_t *iface)
 	return 0;
 }
 
+int socket_accept(socket_info_t *server, socket_info_t *client)
+{
+	int len=sizeof(struct sockaddr_in);
+	struct sockaddr_in address;
+
+	client->fd = accept(server->fd, (struct sockaddr *)&address, &len);
+	if (client->fd == -1) {
+		fprintf(stderr, "%s failed: %s\n", __func__, strerror(errno));
+		return -1;
+	}
+
+	client->type = TYPE_TCP_CLIENT;
+	sprintf(client->des.addr, "%s", inet_ntoa(address.sin_addr));
+	sprintf(client->des.port, "%d", ntohs(address.sin_port));
+	
+	return 0;
+}
+
 int socket_connect(socket_info_t *iface)
 {	
 	int err;
 	char ip[SOCKET_ADDR_MAX]={0};
-	struct sockaddr_in address={0};
+	struct sockaddr_in address;
 
 	err = socket_get_host_ip(iface->des.addr, ip);
 	if (err) {
@@ -137,6 +156,7 @@ int socket_connect(socket_info_t *iface)
 		return -1;
 	}
 
+	memset(&address, 0, sizeof(struct sockaddr_in));
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = inet_addr(ip);
 	address.sin_port = htons(atoi(iface->des.port));
@@ -147,6 +167,26 @@ int socket_connect(socket_info_t *iface)
 	}
 	
 	return 0;
+}
+
+int socket_wait(socket_info_t *iface, int second)
+{
+	int err;
+	fd_set readfds;
+	struct timeval tv;
+
+	FD_ZERO(&readfds);
+	FD_SET(iface->fd, &readfds);
+	
+	tv.tv_sec = second;
+	tv.tv_usec = 5000;	// at least wait 5ms
+
+	err = select(FD_SETSIZE,&readfds,NULL,NULL,&tv);
+	if (err > 0 && FD_ISSET(iface->fd, &readfds)) {
+		return 0;
+	} 
+
+	return -1;
 }
 
 int socket_get_host_ip(const char *des, char *output)
@@ -176,7 +216,7 @@ int socket_parse_uri(const char *uri, socket_info_t *iface)
 	if (strncmp(c, "udp://", 6) == 0) {
 		iface->type = TYPE_UDP;
 	} else if (strncmp(c, "tcp://", 6) == 0) {
-		iface->type = TYPE_TCP;
+		iface->type = c[6] == ':' ? TYPE_TCP_SERVER : TYPE_TCP_CLIENT;
 	} else {
 		return -1;
 	}
@@ -195,10 +235,10 @@ int socket_parse_uri(const char *uri, socket_info_t *iface)
 		p[j] = c[i];
 	}
 
-	return 0;
+	return (p == iface->des.port) ? 0 : -1;
 }
 
-char _usage[] = "\nUsage: \n										\
+char _usage[] = "\nUsage: \n									\
 				\t UDP fix port: udp://127.0.0.1:18080\n		\
 				\t UDP random port: udp://127.0.0.1:0\n			\
 				\t TCP client: tcp://127.0.0.1:8080\n			\
@@ -219,11 +259,11 @@ int socket_open(const char *uri, socket_info_t *iface)
 	if (err) 
 		goto failed;
 
-	if (iface->type == TYPE_UDP && strlen(iface->des.addr) > 0) {
+	if (iface->type == TYPE_UDP) {
 		err = socket_udp_init(iface);
-	} else if (iface->type == TYPE_TCP && atoi(iface->des.port) > 0 && strlen(iface->des.addr) > 0) {
+	} else if (iface->type == TYPE_TCP_CLIENT) {
 		err = socket_tcp_client_init(iface);
-	} else if (iface->type == TYPE_TCP && atoi(iface->des.port) > 0 && strlen(iface->des.addr) == 0) {
+	} else if (iface->type == TYPE_TCP_SERVER) {
 		err = socket_tcp_server_init(iface);
 	} else {
 		goto failed;
@@ -260,11 +300,11 @@ int socket_recv(socket_info_t *iface, void *data, int size)
 		case TYPE_UDP:
 			return socket_udp_recv(iface, data, size);
 
-		case TYPE_TCP:
+		case TYPE_TCP_CLIENT:
 			return socket_tcp_recv(iface, data, size);
 		
-		default:
-			break;
+		case TYPE_TCP_SERVER:
+			return socket_accept(iface, (socket_info_t *)data);
 	}
 
 	return -1;
@@ -279,7 +319,8 @@ int socket_send(socket_info_t *iface, void *data, int size)
 		case TYPE_UDP:
 			return socket_udp_send(iface, data, size);
 
-		case TYPE_TCP:
+		case TYPE_TCP_CLIENT:
+		case TYPE_TCP_SERVER:
 			return socket_tcp_send(iface, data, size);
 		
 		default:
@@ -295,9 +336,10 @@ int socket_send(socket_info_t *iface, void *data, int size)
 int socket_tcp_server_init(socket_info_t *iface)
 {
 	int err;
-	struct addrinfo hints = {0};
+	struct addrinfo hints;
 	struct addrinfo *result,*rp;
 
+	memset(&hints, 0, sizeof(struct addrinfo));
 	hints.ai_family = AF_UNSPEC;
 	hints.ai_socktype = SOCK_STREAM;
 	hints.ai_flags = AI_PASSIVE;
@@ -319,20 +361,20 @@ int socket_tcp_server_init(socket_info_t *iface)
 			fprintf(stderr, "%s failed: %s\n", __func__, strerror(errno));
 			return -1;
 		}
-		
+
 		if(socket_set_close_on_exec(iface->fd, 1))
-			continue;
-		
-		if(socket_set_non_block(iface->fd, 1))
-			continue;
-		
-		if(socket_set_reuse(iface->fd, 1))
 			continue;
 
 		if(socket_bind(iface))
 			continue;
 
-		if(socket_listen(iface) == 0)
+		if(socket_set_reuse(iface->fd, 1))
+			continue;
+
+		if(socket_listen(iface))
+			continue;
+
+		if(socket_set_non_block(iface->fd, 1) == 0)
 			break;
 	}
 
@@ -351,9 +393,10 @@ int socket_tcp_server_init(socket_info_t *iface)
 int socket_tcp_client_init(socket_info_t *iface)
 {
 	int err;
-	struct addrinfo hints = {0};
+	struct addrinfo hints;
 	struct addrinfo *result,*rp;
 
+	memset(&hints, 0, sizeof(struct addrinfo));
 	hints.ai_family = AF_UNSPEC;
 	hints.ai_socktype = SOCK_STREAM;
 	hints.ai_flags = 0;
@@ -471,9 +514,10 @@ int socket_udp_rcvbuf_set(int fd, int val)
 int socket_udp_init(socket_info_t *iface)
 {
 	int err;
-	struct addrinfo hints = {0};
+	struct addrinfo hints;
 	struct addrinfo *result,*rp;
 
+	memset(&hints, 0, sizeof(struct addrinfo));
 	hints.ai_family = AF_UNSPEC;
 	hints.ai_socktype = SOCK_DGRAM;
 	hints.ai_flags = AI_PASSIVE;
@@ -482,7 +526,7 @@ int socket_udp_init(socket_info_t *iface)
 	hints.ai_addr = NULL;
 	hints.ai_next = NULL;
 
-	err = getaddrinfo(NULL, iface->des.port, &hints, &result);
+	err = getaddrinfo(iface->des.addr, iface->des.port, &hints, &result);
 	if(err != 0){
 		fprintf(stderr, "%s failed: %s\n", "getaddrinfo", gai_strerror(err));
 		return -1;
@@ -525,8 +569,9 @@ int socket_udp_init(socket_info_t *iface)
 int socket_udp_send(socket_info_t *iface, void *data, int size)
 {
 	int nbyte;
-	struct sockaddr_in address={0};
-		
+	struct sockaddr_in address;
+	
+	memset(&address, 0, sizeof(struct sockaddr_in));
 	address.sin_family = AF_INET;
 	address.sin_addr.s_addr = inet_addr(iface->des.addr);
 	address.sin_port = htons(atoi(iface->des.port));
@@ -542,8 +587,9 @@ int socket_udp_send(socket_info_t *iface, void *data, int size)
 int socket_udp_recv(socket_info_t *iface, void *data, int size)
 {
 	int nbyte=0,len=sizeof(struct sockaddr_in);
-	struct sockaddr_in address={0};
+	struct sockaddr_in address;
 
+	memset(&address, 0, sizeof(struct sockaddr_in));
 	nbyte = recvfrom(iface->fd, data, size, 0, 
 						(struct sockaddr*)&address, &len);
 

@@ -17,7 +17,7 @@
 #define LBUS_HOST "127.0.0.1"
 #define LBUS_PORT "13333"
 
-lbus_broker_t broker = {0};
+lbus_broker_t broker;
 
 void *lbus_payload_get(void *msg)
 {
@@ -127,7 +127,7 @@ int lbus_dispatch_callback(void *msg, void *userdata);
 int lbus_broker_init(lbus_broker_t *bk)
 {	
 	parallel_spin_init(&bk->lock);
-	bk->ep = lbus_endpoint_create("broker", LBUS_HOST, LBUS_PORT, lbus_dispatch_callback, bk);
+	bk->ep = lbus_endpoint_create("broker", LBUS_HOST, LBUS_PORT, (void *)lbus_dispatch_callback, bk);
 	if (!bk->ep) {
 		log_debug("Failed to create broker endpoint\n");
 		return -1;
@@ -157,7 +157,7 @@ void *lbus_endpoint_create(const char *name, const char *host, const char *port,
 	memset(ep, 0, sizeof(lbus_endpoint_t));
 	sprintf(ep->name, "%s", name?name:"endpoint");
 	parallel_spin_init(&ep->lock);
-	ep->recv_cb = cb;
+	ep->recv_cb = (void *)cb;
 	ep->userdata = userdata;
 	sprintf(ep->uri, "udp://%s:%s", host?host:LBUS_HOST, port?port:"0");
 	ep->transport = transport_create(ep->uri, lbus_handle_recv, ep);
@@ -192,11 +192,12 @@ int lbus_msg_respond(lbus_endpoint_t *ep, void *msg)
 
 int lbus_send_ping(lbus_endpoint_t *ep)
 {
-	lbus_msg_t msg={0};
+	lbus_msg_t msg;
 	
 	if (ep->bond)
 		return 0;
 	
+	memset(&msg, 0, sizeof(lbus_msg_t));
 	msg.event = LBUS_EV_PING;
 	
 	return lbus_msg_broadcast(ep, &msg);
@@ -205,13 +206,14 @@ int lbus_send_ping(lbus_endpoint_t *ep)
 int lbus_send_pong(lbus_endpoint_t *ep, void *_msg)
 {
 	lbus_msg_t *src_msg = _msg;
-	lbus_msg_t msg={0};
+	lbus_msg_t msg;
 	
 	if (!ep || !src_msg) {
 		log_err("Invalid pointer\n");
 		return -1;
 	}
 
+	memset(&msg, 0, sizeof(lbus_msg_t));
 	msg.event = LBUS_EV_PONG;
 	memcpy(&msg.src, &src_msg->src, sizeof(src_msg->src));
 	
@@ -305,7 +307,8 @@ int lbus_svc_init(void *runtime)
 {
 	int err;
 	lbus_broker_t *bk = &broker;
-	
+
+	memset(bk, 0, sizeof(lbus_broker_t));
 	INIT_LIST_HEAD(&bk->peers);
 	kvlist_init(&bk->route_table, kvlist_strlen);
 	

@@ -5,6 +5,8 @@
 extern "C" {
 #endif
 
+#include <getopt.h>
+
 typedef enum {
 	LSVC_LBUS_EVENT = 0x10000000,
 	LSVC_LOG_EVENT = 0x20000000,
@@ -36,8 +38,8 @@ extern void *lsvc_runtime_get(void);
 extern int lsvc_thread_call(void *runtime, void *msg);
 extern int lsvc_bus_call(void *runtime, void *msg);
 extern void lsvc_shutdown(void *runtime);
-extern int lsvc_event_send(int event, unsigned char *data, unsigned int size, 
-						unsigned int flags, const void *_msg);
+extern int lsvc_event_send(int event, void *data, unsigned int size, 
+						unsigned int flags, void *_src_msg);
 
 #ifdef __cplusplus
 } /* extern "C" */

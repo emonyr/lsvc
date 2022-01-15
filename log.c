@@ -16,7 +16,7 @@ log_svc_state_t log_state = {
 	.lock = PARALLEL_SPINLOCK_INITIALIZER,
 };
 
-int log_svc_state(const void *_msg)
+int log_svc_state(void *_msg)
 {
 	log_svc_state_t *s = &log_state;
 	
@@ -58,15 +58,14 @@ int log_impl(FILE *output, int level, const char* filename, int line,
 						const char* function,const char *format, ...)
 {
 	struct timeval _tv;
-	time_t cur_time = 0;
-	struct tm _tm = {0};
+	struct tm _tm;
 	
 	if (level > log_state.level)
 		return 1;
 	
+	memset(&_tm, 0, sizeof(struct tm));
 	gettimeofday(&_tv, NULL);
-	cur_time = _tv.tv_sec;
-	if (!gmtime_r(&cur_time, &_tm))
+	if (!gmtime((void *)&_tm))
 		return -1;
 	
 	fprintf(output, "%s[%02d-%02d-%02d %02d:%02d:%02d.%03d][%c][%s:%d] ", 
@@ -134,6 +133,15 @@ int log_set_level(log_level_t level)
 	return 0;
 }
 
+#include "transport.h"
+
+void *_handle_recv(void *arg, void *payload, int size)
+{
+
+	log_hex_dump(payload, size);
+
+	return NULL;
+}
 
 /*
  * lsvc api implementation
@@ -142,6 +150,10 @@ int log_set_level(log_level_t level)
 int log_svc_init(void *runtime)
 {
 	// log_set_level(LOG_LEVEL_INFO);
+	transport_t *channel = transport_create("tcp://:9000", _handle_recv, &log_state);
+	if (!channel) {
+		log_err("Failed to create channel\n");
+	}
 	return 0;
 }
 
@@ -169,7 +181,7 @@ int log_svc_getopt(int argc, const char *argv[], void **msg)
 	}
 
 	m = *msg;
-	ctl = m->payload;
+	ctl = (void *)m->payload;
 	while((opt = getopt(argc, (void *)argv, "vl:")) != -1) {
 		switch (opt) {
 			case 'v':
@@ -196,7 +208,7 @@ int log_svc_ioctl(void *runtime, void *_msg)
 {
 	int err = -1;
 	lbus_msg_t *msg = _msg;
-	log_ctl_t *ctl = msg->payload;
+	log_ctl_t *ctl = (void *)msg->payload;
 	
 	switch(msg->event) {
 		case LOG_EV_GET_STATE:

@@ -12,11 +12,11 @@ EXE_TARGET = $(OUTPUT_DIR)/$(MODULE_NAME)
 TARGETS = $(LIB_TARGET) $(EXE_TARGET)
 
 # Compiler flags to enable all warnings & debug info
-CFLAGS := -Wall -Werror -g -O0
+CFLAGS := -std=c99 -fasm -D_GNU_SOURCE -Wall -Werror -g -O0
 
 # Lib flags
-LIB_CFLAGS := -fPIC -shared -Wall -rdynamic -Wno-discarded-qualifiers \
-				-Wno-address-of-packed-member -Wno-incompatible-pointer-types \
+LIB_CFLAGS := $(CFLAGS) -fPIC -shared -rdynamic -Wno-discarded-qualifiers \
+				-Wno-address-of-packed-member \
 				-Wno-pointer-to-int-cast -Wno-pointer-sign -Wno-int-conversion 
 				
 LIB_LDFLAGS := -fPIC -L$(OUTPUT_DIR) -l$(MODULE_NAME) -pthread -lrt
