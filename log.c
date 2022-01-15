@@ -57,25 +57,27 @@ char *log_level_color[] = {	"\033[1;31m", 	//'F'
 int log_impl(FILE *output, int level, const char* filename, int line, 
 						const char* function,const char *format, ...)
 {
-	struct timeval _tv;
-	struct tm _tm;
+	struct timeval now;
+	struct tm *display;
 	
 	if (level > log_state.level)
 		return 1;
 	
-	memset(&_tm, 0, sizeof(struct tm));
-	gettimeofday(&_tv, NULL);
-	if (!gmtime((void *)&_tm))
+	memset(&now, 0, sizeof(struct timeval));
+	gettimeofday(&now, NULL);
+
+	display = gmtime((void *)&now.tv_sec);
+	if (!display)
 		return -1;
 	
 	fprintf(output, "%s[%02d-%02d-%02d %02d:%02d:%02d.%03d][%c][%s:%d] ", 
 						log_level_color[level],
-						_tm.tm_year + 1900,
-						_tm.tm_mon + 1,
-						_tm.tm_mday, 
-						(_tm.tm_hour + 8) % 24, 
-						_tm.tm_min, _tm.tm_sec,
-						(unsigned int)_tv.tv_usec/1000, 
+						display->tm_year + 1900,
+						display->tm_mon + 1,
+						display->tm_mday, 
+						(display->tm_hour + 8) % 24, 
+						display->tm_min, display->tm_sec,
+						(unsigned int)now.tv_usec/1000, 
 						log_level_ch[level],
 						file_get_striped_name(filename), 
 						line);
