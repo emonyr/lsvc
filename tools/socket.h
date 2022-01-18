@@ -24,6 +24,8 @@ typedef struct {
 	int type;
 	socket_addr_t src;
 	socket_addr_t des;
+	void *posix_addr_info;
+	int posix_addr_len;
 }__attribute__ ((packed))socket_info_t;
 
 

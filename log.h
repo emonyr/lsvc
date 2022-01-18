@@ -9,6 +9,8 @@ extern "C" {
 #include "parallel.h"
 #include "lsvc.h"
 
+#define LOG_PORT "19000"
+
 typedef enum {
 	LOG_EV_GET_STATE = LSVC_LOG_EVENT,
 	LOG_EV_REPORT_STATE,

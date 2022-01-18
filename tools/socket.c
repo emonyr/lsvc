@@ -104,14 +104,26 @@ int socket_set_broadcast(int fd, int val)
 int socket_bind(socket_info_t *iface)
 {
 	struct sockaddr_in address;
-    address.sin_family = AF_INET;
-    address.sin_addr.s_addr = inet_addr(iface->des.addr);
-	address.sin_port = htons(atoi(iface->des.port));
-	
-	if (bind(iface->fd, (struct sockaddr *)&address, sizeof(struct sockaddr)) != 0) {
-		fprintf(stderr, "%s failed: %s\n", __func__, strerror(errno));
-		return -1;
+
+	if (iface->posix_addr_info && iface->posix_addr_len) {
+		// address info from caller
+		if (bind(iface->fd, (struct sockaddr *)iface->posix_addr_info, iface->posix_addr_len) != 0) {
+			fprintf(stderr, "%s failed: %s\n", __func__, strerror(errno));
+			return -1;
+		}
+	} else {
+		// dafault to ipv4 address info
+		memset(&address, 0, sizeof(address));
+		address.sin_family = AF_INET;
+		address.sin_addr.s_addr = inet_addr(iface->des.addr);
+		address.sin_port = htons(atoi(iface->des.port));
+		
+		if (bind(iface->fd, (struct sockaddr *)&address, sizeof(struct sockaddr)) != 0) {
+			fprintf(stderr, "%s failed: %s\n", __func__, strerror(errno));
+			return -1;
+		}
 	}
+	
 	
 	return 0;
 }
@@ -137,6 +149,12 @@ int socket_accept(socket_info_t *server, socket_info_t *client)
 		return -1;
 	}
 
+	if (socket_set_non_block(client->fd, 1)) {
+		socket_close(client);
+		fprintf(stderr, "%s failed: %s\n", __func__, strerror(errno));
+		return -1;
+	}
+
 	client->type = TYPE_TCP_CLIENT;
 	sprintf(client->des.addr, "%s", inet_ntoa(address.sin_addr));
 	sprintf(client->des.port, "%d", ntohs(address.sin_port));
@@ -146,24 +164,31 @@ int socket_accept(socket_info_t *server, socket_info_t *client)
 
 int socket_connect(socket_info_t *iface)
 {	
-	int err;
 	char ip[SOCKET_ADDR_MAX]={0};
 	struct sockaddr_in address;
 
-	err = socket_get_host_ip(iface->des.addr, ip);
-	if (err) {
-		fprintf(stderr, "%s failed: %s\n", __func__, strerror(errno));
-		return -1;
-	}
+	if (iface->posix_addr_info && iface->posix_addr_len) {
+		// address info from caller
+		if (connect(iface->fd, (struct sockaddr *)iface->posix_addr_info, iface->posix_addr_len) != 0) {
+			fprintf(stderr, "%s failed: %s\n", __func__, strerror(errno));
+			return -1;
+		}
+	} else {
+		// dafault to ipv4 address info
+		if (socket_get_host_ip(iface->des.addr, ip)) {
+			fprintf(stderr, "%s failed: %s\n", __func__, strerror(errno));
+			return -1;
+		}
 
-	memset(&address, 0, sizeof(struct sockaddr_in));
-    address.sin_family = AF_INET;
-    address.sin_addr.s_addr = inet_addr(ip);
-	address.sin_port = htons(atoi(iface->des.port));
-	
-	if (connect(iface->fd, (struct sockaddr *)&address, sizeof(struct sockaddr)) != 0) {
-		fprintf(stderr, "%s failed: %s\n", __func__, strerror(errno));
-		return -1;
+		memset(&address, 0, sizeof(struct sockaddr_in));
+		address.sin_family = AF_INET;
+		address.sin_addr.s_addr = inet_addr(ip);
+		address.sin_port = htons(atoi(iface->des.port));
+		
+		if (connect(iface->fd, (struct sockaddr *)&address, sizeof(struct sockaddr)) != 0) {
+			fprintf(stderr, "%s failed: %s\n", __func__, strerror(errno));
+			return -1;
+		}
 	}
 	
 	return 0;
@@ -171,7 +196,6 @@ int socket_connect(socket_info_t *iface)
 
 int socket_wait(socket_info_t *iface, int second)
 {
-	int err;
 	fd_set readfds;
 	struct timeval tv;
 
@@ -181,12 +205,7 @@ int socket_wait(socket_info_t *iface, int second)
 	tv.tv_sec = second;
 	tv.tv_usec = 5000;	// at least wait 5ms
 
-	err = select(FD_SETSIZE,&readfds,NULL,NULL,&tv);
-	if (err > 0 && FD_ISSET(iface->fd, &readfds)) {
-		return 0;
-	} 
-
-	return -1;
+	return select(FD_SETSIZE,&readfds,NULL,NULL,&tv);
 }
 
 int socket_get_host_ip(const char *des, char *output)
@@ -282,6 +301,8 @@ int socket_close(socket_info_t *iface)
 		close(iface->fd);
 	
 	iface->fd = -1;
+	iface->posix_addr_info = NULL;
+	iface->posix_addr_len = 0;
 	
 	return 0;
 }
@@ -343,7 +364,7 @@ int socket_tcp_server_init(socket_info_t *iface)
 	hints.ai_family = AF_UNSPEC;
 	hints.ai_socktype = SOCK_STREAM;
 	hints.ai_flags = AI_PASSIVE;
-	hints.ai_protocol = 0;
+	hints.ai_protocol = IPPROTO_TCP;
 	hints.ai_canonname = NULL;
 	hints.ai_addr = NULL;
 	hints.ai_next = NULL;
@@ -359,8 +380,11 @@ int socket_tcp_server_init(socket_info_t *iface)
 		iface->fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
 		if(iface->fd < 0) {
 			fprintf(stderr, "%s failed: %s\n", __func__, strerror(errno));
-			return -1;
+			continue;
 		}
+		
+		iface->posix_addr_info = rp->ai_addr;
+		iface->posix_addr_len = rp->ai_addrlen;
 
 		if(socket_set_close_on_exec(iface->fd, 1))
 			continue;
@@ -400,7 +424,7 @@ int socket_tcp_client_init(socket_info_t *iface)
 	hints.ai_family = AF_UNSPEC;
 	hints.ai_socktype = SOCK_STREAM;
 	hints.ai_flags = 0;
-	hints.ai_protocol = 0;
+	hints.ai_protocol = IPPROTO_TCP;
 	hints.ai_canonname = NULL;
 	hints.ai_addr = NULL;
 	hints.ai_next = NULL;
@@ -416,8 +440,11 @@ int socket_tcp_client_init(socket_info_t *iface)
 		iface->fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
 		if(iface->fd < 0) {
 			fprintf(stderr, "%s failed: %s\n", "Create socket", strerror(errno));
-			return -1;
+			continue;
 		}
+
+		iface->posix_addr_info = rp->ai_addr;
+		iface->posix_addr_len = rp->ai_addrlen;
 		
 		if(socket_set_close_on_exec(iface->fd, 1))
 			continue;
@@ -464,20 +491,7 @@ int socket_tcp_send(socket_info_t *iface, void *data, int size)
 
 int socket_tcp_recv(socket_info_t *iface, void *data, int size)
 {
-	int len=0,nbyte=0;
-	do{
-		nbyte = read(iface->fd, &((unsigned char *)data)[len], size);
-		if(nbyte < 0){
-			if(nbyte == EAGAIN){
-				continue;
-			}else{
-				break;
-			}
-		}
-		len += nbyte;
-	}while(nbyte != 0 && len < size);
-
-	return len;
+	return read(iface->fd, data, size);
 }
 
 /*
@@ -521,7 +535,7 @@ int socket_udp_init(socket_info_t *iface)
 	hints.ai_family = AF_UNSPEC;
 	hints.ai_socktype = SOCK_DGRAM;
 	hints.ai_flags = AI_PASSIVE;
-	hints.ai_protocol = 0;
+	hints.ai_protocol = IPPROTO_UDP;
 	hints.ai_canonname = NULL;
 	hints.ai_addr = NULL;
 	hints.ai_next = NULL;
@@ -535,8 +549,13 @@ int socket_udp_init(socket_info_t *iface)
 	for (rp=result; rp!=NULL; rp=rp->ai_next) {
 		socket_close(iface);
 		iface->fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
-		if(iface->fd < 0)
+		if(iface->fd < 0) {
+			fprintf(stderr, "%s failed: %s\n", "Create socket", strerror(errno));
 			continue;
+		}
+
+		iface->posix_addr_info = rp->ai_addr;
+		iface->posix_addr_len = rp->ai_addrlen;
 		
 		if(socket_set_close_on_exec(iface->fd, 1))
 			continue;

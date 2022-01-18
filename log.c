@@ -135,27 +135,13 @@ int log_set_level(log_level_t level)
 	return 0;
 }
 
-#include "transport.h"
-
-void *_handle_recv(void *arg, void *payload, int size)
-{
-
-	log_hex_dump(payload, size);
-
-	return NULL;
-}
-
 /*
  * lsvc api implementation
  */
 
 int log_svc_init(void *runtime)
 {
-	// log_set_level(LOG_LEVEL_INFO);
-	transport_t *channel = transport_create("tcp://:9000", _handle_recv, &log_state);
-	if (!channel) {
-		log_err("Failed to create channel\n");
-	}
+	log_set_level(LOG_LEVEL_INFO);
 	return 0;
 }
 

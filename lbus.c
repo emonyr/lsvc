@@ -105,12 +105,11 @@ void *lbus_handle_recv(void *arg, void *data, int nbyte)
 		return NULL;
 	}
 	
-	if (!ep->bond) {
+	if (!ep->bond)
 		lbus_try_bond(m, ep);
-	}else{
-		m->payload = lbus_payload_get(m);
-		ep->recv_cb(m, ep->userdata);
-	}
+
+	m->payload = lbus_payload_get(m);
+	ep->recv_cb(m, ep->userdata);
 
 	return NULL;
 }
@@ -134,6 +133,7 @@ int lbus_broker_init(lbus_broker_t *bk)
 	}
 	bk->running = 1;
 	bk->ep->bond = 1;	// broker auto bonded
+	utils_timer_stop(bk->ep->timer);
 	
 	return 0;
 }
@@ -161,7 +161,7 @@ void *lbus_endpoint_create(const char *name, const char *host, const char *port,
 	ep->userdata = userdata;
 	sprintf(ep->uri, "udp://%s:%s", host?host:LBUS_HOST, port?port:"0");
 	ep->transport = transport_create(ep->uri, lbus_handle_recv, ep);
-	ep->timer = utils_timer_start(lbus_send_ping, ep, 0, 2, 1);
+	ep->timer = utils_timer_start(lbus_send_ping, ep, 0, LBUS_PING_CYCLE, 1);
 	if (!ep->timer) {
 		log_err("Failed to create endpoint timer\n");
 		goto failed;
@@ -183,6 +183,7 @@ int lbus_msg_respond(lbus_endpoint_t *ep, void *msg)
 	memcpy(&m->des, &m->src, sizeof(m->src));
 	sprintf(uri, "udp://%s:%s", m->des.addr, m->des.port);
 	
+	log_debug("[RES] 0x%08X -> %s:%s\n", m->event, m->des.addr, m->des.port);
 	nbyte = transport_xfer(uri, ep->transport, m, LMSG_HEADER_SIZE + m->size);
 	if (nbyte < 0)
 		log_err("Failed to send direct msg\n");
@@ -193,9 +194,6 @@ int lbus_msg_respond(lbus_endpoint_t *ep, void *msg)
 int lbus_send_ping(lbus_endpoint_t *ep)
 {
 	lbus_msg_t msg;
-	
-	if (ep->bond)
-		return 0;
 	
 	memset(&msg, 0, sizeof(lbus_msg_t));
 	msg.event = LBUS_EV_PING;
@@ -224,7 +222,7 @@ int lbus_route_table_update(lbus_msg_t *msg)
 {
 	int err = 0;
 	lbus_broker_t *bk = &broker;
-	lbus_endpoint_t *target, *ep;
+	lbus_route_record_t *record;
 	char uri[TRANSPORT_MAX_URI] = {0};
 	
 	if (atoi(msg->src.port) <= 0 || 
@@ -235,24 +233,32 @@ int lbus_route_table_update(lbus_msg_t *msg)
 	
 	parallel_spin_lock(&bk->lock);
 	sprintf(uri, "udp://%s:%s", msg->src.addr, msg->src.port);
-	log_debug("Handling address: %s\n", uri);
+	// log_debug("Handling address: %s\n", uri);
 	
-	target = kvlist_get(&bk->route_table, uri);
-	if (target) {
-		err = -1;
+	record = kvlist_get(&bk->route_table, uri);
+	if (record) {
+		record = record->self;
+		record->timestamp = utils_timer_now();
+		err = 0;
 		goto out;
 	}
 	
-	ep = mem_alloc(sizeof(lbus_endpoint_t));
-	if (!ep) {
+	record = mem_alloc(sizeof(lbus_route_record_t));
+	if (!record) {
 		err = -1;
 		goto out;
 	}
-	
-	sprintf(ep->uri, "%s", uri);
-	kvlist_set(&bk->route_table, uri, (void *)ep);
-	list_add_tail(&ep->entry, &bk->peers);
-	log_info("New endpoint added: %s\n", ep->uri);
+
+	record->self = record;
+	record->timestamp = utils_timer_now();
+	sprintf(record->key, "%s", uri);
+	sprintf((char *)record->payload, "%s", uri);
+	kvlist_set(&bk->route_table, record->key, record);
+
+	INIT_LIST_HEAD(&record->entry);
+	list_add_tail(&record->entry, &bk->peers);
+
+	log_debug("[ROUTE] update: %s\n", (char *)record->payload);
 	
 out:
 	parallel_spin_unlock(&bk->lock);
@@ -261,10 +267,10 @@ out:
 
 int lbus_dispatch_callback(void *msg, void *userdata)
 {
-	int nbyte;
+	int nbyte,now;
 	lbus_broker_t *bk = userdata;
 	lbus_msg_t *m = msg;
-	lbus_endpoint_t *target, *tmp;
+	lbus_route_record_t *target, *next;
 	
 	//log_debug("\n");
 	//log_debug("m->event: 0x%08X\n", m->event);
@@ -280,24 +286,40 @@ int lbus_dispatch_callback(void *msg, void *userdata)
 	 * so services can send response to it.
 	 */
 	memcpy(&m->src, &bk->ep->transport->iface.src, sizeof(bk->ep->transport->iface.src));
+	log_debug("[REQ] 0x%08X <- %s:%s\n", m->event, 
+					bk->ep->transport->iface.src.addr, bk->ep->transport->iface.src.port);
 	
 	/* Respond to LBUS event directly */
 	if (lsvc_valid_event(m->event, LSVC_LBUS_EVENT))
 		return lsvc_thread_call(NULL, m);
 	
 	/* Broadcast message to each recorded endpoint */
-	list_for_each_entry_safe(target,tmp, &bk->peers, entry) {
-		nbyte = transport_xfer(target->uri, bk->ep->transport, m, LMSG_HEADER_SIZE + m->size);
+	now = utils_timer_now();
+	list_for_each_entry_safe(target, next, &bk->peers, entry) {
+		if ((now - target->timestamp) > LBUS_RECORD_TIMEOUT) {
+			parallel_spin_lock(&bk->lock);
+			kvlist_delete(&bk->route_table, target->key);
+			list_del(&target->entry);
+			parallel_spin_unlock(&bk->lock);
+			continue;
+		}
+
+		char *uri = (void *)target->payload;
+		nbyte = transport_xfer(uri, bk->ep->transport, m, LMSG_HEADER_SIZE + m->size);
 		if (nbyte <= 0) {
-			log_err("Failed sending to endpoint: %s\n", target->uri);
+			log_err("Failed sending to endpoint: %s\n", uri);
 		} else {
-			log_debug("Msg 0x%08X sent to endpoint: %s\n", m->event, target->uri);
+			log_info("[REDIRECT] 0x%08X -> %s\n", m->event, uri);
 		}
 	}
 	
 	return 0;
 }
 
+int lbus_kvlist_record_len(struct kvlist *kv, const void *data)
+{
+	return sizeof(lbus_route_record_t);
+}
 
 /*
  * lsvc api implementation
@@ -310,7 +332,7 @@ int lbus_svc_init(void *runtime)
 
 	memset(bk, 0, sizeof(lbus_broker_t));
 	INIT_LIST_HEAD(&bk->peers);
-	kvlist_init(&bk->route_table, kvlist_strlen);
+	kvlist_init(&bk->route_table, lbus_kvlist_record_len);
 	
 	err = lbus_broker_init(bk);
 	if (err < 0) {

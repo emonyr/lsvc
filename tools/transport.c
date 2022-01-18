@@ -5,65 +5,77 @@
 #include "mem.h"
 #include "transport.h"
 
+void *_transport_do_create(const char *uri, 
+					transport_callback_t *cb, void *arg, void *iface);
+
 void *_transport_recv_routine(void *arg)
 {
-	int err,nbyte;
+	int nbyte;
 	unsigned char payload[TRANSPORT_MAX_PAYLOAD];
 	transport_t *t = arg;
 
 	while (t->open) {
-		err = socket_wait(&t->iface, 2);
-		if (!err) {
+		if (socket_wait(&t->iface, 2) > 0) {
 			nbyte = socket_recv(&t->iface, payload, sizeof(payload));
-			if (nbyte>0)
+			if (nbyte > 0) {
 				t->cb(t->arg, payload, nbyte);
+			} else if (t->recv_err++ > TRANSPORT_MAX_ERR)
+				break;
 		}
 	}
 
 	return NULL;
 }
 
+void _transport_prune_client(transport_t *server)
+{
+	transport_t *target, *next;
+
+	list_for_each_entry_safe(target, next, &server->li, li) {
+		if (target->recv_err > TRANSPORT_MAX_ERR) {
+			list_del(&target->li);
+			transport_destroy(target);
+		}
+	}
+}
+
 void *_transport_accept_routine(void *arg)
 {
-	int err;
+	int ret;
 	unsigned char payload[TRANSPORT_MAX_PAYLOAD];
 	transport_t *t = arg;
-
+	
 	while (t->open) {
-		err = socket_wait(&t->iface, 2);
-		if (!err) {
-			err = socket_recv(&t->iface, payload, sizeof(payload));
-			if (!err) {
+		ret = socket_wait(&t->iface, 2);
+		if (ret > 0) {
+			ret = socket_recv(&t->iface, payload, sizeof(payload));
+			if (ret >= 0) {
 				char uri[TRANSPORT_MAX_URI] = {0};
 				transport_t *cli = NULL;
 				socket_info_t *cli_iface = (void *)payload;
 
 				sprintf(uri, "tcp://%s:%s", cli_iface->des.addr, cli_iface->des.port);
-				cli = transport_create(uri, t->cb, t->arg);
+				cli = _transport_do_create(uri, t->cb, t->arg, cli_iface);
 				if (cli) {
 					list_add_tail(&cli->li, &t->li);
-					printf("+++++++ %s %d cli_iface.fd %d\n", __func__, __LINE__, cli_iface->fd);
-					printf("+++++++ %s %d t->iface.fd %d\n", __func__, __LINE__, t->iface.fd);
 				} else {
 					fprintf(stderr, "Failed to establish connection to client: %s\n", uri);
 					continue;
 				}
-			}
-		}
+			} else if (t->recv_err++ > TRANSPORT_MAX_ERR)
+				break;
+		} else if (ret == 0)
+			_transport_prune_client(t);
 	}
 
 	return NULL;
 }
 
-void *transport_create(const char *uri, transport_callback_t *cb, void *arg)
+void *_transport_do_create(const char *uri, 
+					transport_callback_t *cb, void *arg, void *iface)
 {
 	int err=-1;
 	transport_t *t=NULL;
-
-	if (!uri || !cb) {
-		fprintf(stderr, "Invalid param: uri %p, cb %p\n", uri, cb);
-		return NULL;
-	}
 
 	t = mem_alloc(sizeof(transport_t));
 	if (!t) {
@@ -77,12 +89,17 @@ void *transport_create(const char *uri, transport_callback_t *cb, void *arg)
 	t->arg = arg;
 	INIT_LIST_HEAD(&t->li);
 
-	err = socket_open(t->uri, &t->iface);
-	if (err) {
-		fprintf(stderr, "Failed to create transport socket\n");
-		goto failed;
+	if (iface) {
+		memcpy(&t->iface, iface, sizeof(t->iface));
+	} else {
+		err = socket_open(t->uri, &t->iface);
+		if (err) {
+			fprintf(stderr, "Failed to create transport socket\n");
+			goto failed;
+		}
 	}
 	
+	parallel_spin_init(&t->lock);
 	t->thread.routine = t->iface.type == TYPE_TCP_SERVER ? 
 						_transport_accept_routine : _transport_recv_routine;
 	t->thread.arg = t;
@@ -100,16 +117,29 @@ failed:
 	return NULL;
 }
 
+void *transport_create(const char *uri, transport_callback_t *cb, void *arg)
+{
+	if (!uri || !cb) {
+		fprintf(stderr, "Invalid param: uri %p, cb %p\n", uri, cb);
+		return NULL;
+	}
+
+	return _transport_do_create(uri, cb, arg, NULL);
+}
+
 void transport_destroy(transport_t *t)
 {
-	transport_t *target,*tmp;
+	transport_t *target,*next;
 	if (t) {
 		t->open = 0;
 		parallel_thread_kill(&t->thread);
 		socket_close(&t->iface);
 		// destroy client list
-		list_for_each_entry_safe(target,tmp, &t->li, li) {
-			transport_destroy(target);
+		if (t->iface.type == TYPE_TCP_SERVER) {
+			list_for_each_entry_safe(target, next, &t->li, li) {
+				list_del(&target->li);
+				transport_destroy(target);
+			}
 		}
 		mem_free(t);
 	}
@@ -117,6 +147,7 @@ void transport_destroy(transport_t *t)
 
 int transport_xfer(const char *uri, transport_t *t, void *data, int size)
 {
+	int nbyte;
 	if (!t || !data || !size) {
 		fprintf(stderr, "%s: Invalid param\n", __func__);
 		return -1;
@@ -127,5 +158,9 @@ int transport_xfer(const char *uri, transport_t *t, void *data, int size)
 		return -1;
 	}
 	
-	return socket_send(&t->iface, data, size);
+	parallel_spin_lock(&t->lock);
+	nbyte = socket_send(&t->iface, data, size);
+	parallel_spin_unlock(&t->lock);
+
+	return nbyte;
 }

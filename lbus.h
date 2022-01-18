@@ -35,7 +35,7 @@ typedef struct {
 	unsigned char *payload;
 }__attribute__ ((packed))lbus_msg_t;
 
-#define LMSG_MAX_SIZE 10240
+#define LMSG_MAX_SIZE (10240)
 #define LMSG_HEADER_SIZE (sizeof(lbus_msg_t))
 #define LMSG_MAX_DATA_SIZE (LMSG_MAX_SIZE - LMSG_HEADER_SIZE)
 
@@ -48,8 +48,20 @@ typedef struct{
 	char uri[TRANSPORT_MAX_URI];
 	transport_t *transport;
 	parallel_spin_t lock;
-	struct list_head entry;
 }__attribute__ ((packed))lbus_endpoint_t;
+
+#define LBUS_RECORD_KEY_SIZE (64)
+#define LBUS_RECORD_PAYLOAD_SIZE (128)
+#define LBUS_RECORD_TIMEOUT (10)
+#define LBUS_PING_CYCLE (5)
+
+typedef struct {
+	void *self;
+	int timestamp;
+	char key[LBUS_RECORD_KEY_SIZE];
+	unsigned char payload[LBUS_RECORD_PAYLOAD_SIZE];
+	struct list_head entry;
+}__attribute__ ((packed))lbus_route_record_t;
 
 typedef struct {
 	int running;

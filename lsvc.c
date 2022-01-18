@@ -51,7 +51,7 @@ int lsvc_service_ioctl(void *_msg)
 		
 	for(svc=r->svc_list; *svc; svc++) {
 		if (lsvc_valid_event(msg->event, (*svc)->ev_base)) {
-			log_info("------ handling %s 0x%08X ------\n", (*svc)->name, msg->event);
+			log_info("[EVENT] %s 0x%08X\n", (*svc)->name, msg->event);
 			if ((*svc)->ioctl) {
 				err = (*svc)->ioctl(r, msg);
 				if (err < 0)
