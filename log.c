@@ -77,7 +77,7 @@ int log_impl(FILE *output, int level, const char* filename, int line,
 						display->tm_mday, 
 						(display->tm_hour + 8) % 24, 
 						display->tm_min, display->tm_sec,
-						(unsigned int)now.tv_usec/1000, 
+						(uint32_t)now.tv_usec/1000, 
 						log_level_ch[level],
 						file_get_striped_name(filename), 
 						line);
@@ -90,15 +90,15 @@ int log_impl(FILE *output, int level, const char* filename, int line,
 	return 0;
 }
 
-void log_hex_dump(unsigned char *data, int size)
+void log_hex_dump(uint8_t *data, size_t size)
 {
 	char ascii[17];
 	size_t i, j;
 	ascii[16] = '\0';
 	for (i = 0; i < size; ++i) {
-		printf("%02X ", ((unsigned char*)data)[i]);
-		if (((unsigned char*)data)[i] >= ' ' && ((unsigned char*)data)[i] <= '~') {
-			ascii[i % 16] = ((unsigned char*)data)[i];
+		printf("%02X ", ((uint8_t*)data)[i]);
+		if (((uint8_t*)data)[i] >= ' ' && ((uint8_t*)data)[i] <= '~') {
+			ascii[i % 16] = ((uint8_t*)data)[i];
 		} else {
 			ascii[i % 16] = '.';
 		}

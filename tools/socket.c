@@ -307,12 +307,12 @@ int socket_close(socket_info_t *iface)
 	return 0;
 }
 
-int socket_udp_recv(socket_info_t *iface, void *data, int size);
-int socket_udp_send(socket_info_t *iface, void *data, int size);
-int socket_tcp_recv(socket_info_t *iface, void *data, int size);
-int socket_tcp_send(socket_info_t *iface, void *data, int size);
+int socket_udp_recv(socket_info_t *iface, void *data, size_t size);
+int socket_udp_send(socket_info_t *iface, void *data, size_t size);
+int socket_tcp_recv(socket_info_t *iface, void *data, size_t size);
+int socket_tcp_send(socket_info_t *iface, void *data, size_t size);
 
-int socket_recv(socket_info_t *iface, void *data, int size)
+int socket_recv(socket_info_t *iface, void *data, size_t size)
 {
 	if (!iface || !data || !size)
 		return -1;
@@ -331,7 +331,7 @@ int socket_recv(socket_info_t *iface, void *data, int size)
 	return -1;
 }
 
-int socket_send(socket_info_t *iface, void *data, int size)
+int socket_send(socket_info_t *iface, void *data, size_t size)
 {
 	if (!iface || !data || !size)
 		return -1;
@@ -468,12 +468,12 @@ int socket_tcp_client_init(socket_info_t *iface)
     return err;
 }
 
-int socket_tcp_send(socket_info_t *iface, void *data, int size)
+int socket_tcp_send(socket_info_t *iface, void *data, size_t size)
 {
 	int nbyte=0,sent=0;
 	
 	while(sent != size){
-		nbyte = write(iface->fd, &((unsigned char *)data)[sent], size-sent);
+		nbyte = write(iface->fd, &((uint8_t *)data)[sent], size-sent);
 		if(nbyte < 0){
 			if(nbyte == EAGAIN)
 				continue;
@@ -489,7 +489,7 @@ int socket_tcp_send(socket_info_t *iface, void *data, int size)
 	return nbyte;
 }
 
-int socket_tcp_recv(socket_info_t *iface, void *data, int size)
+int socket_tcp_recv(socket_info_t *iface, void *data, size_t size)
 {
 	return read(iface->fd, data, size);
 }
@@ -585,7 +585,7 @@ int socket_udp_init(socket_info_t *iface)
     return err;
 }
 
-int socket_udp_send(socket_info_t *iface, void *data, int size)
+int socket_udp_send(socket_info_t *iface, void *data, size_t size)
 {
 	int nbyte;
 	struct sockaddr_in address;
@@ -603,7 +603,7 @@ int socket_udp_send(socket_info_t *iface, void *data, int size)
 	return nbyte;
 }
 
-int socket_udp_recv(socket_info_t *iface, void *data, int size)
+int socket_udp_recv(socket_info_t *iface, void *data, size_t size)
 {
 	int nbyte=0,len=sizeof(struct sockaddr_in);
 	struct sockaddr_in address;

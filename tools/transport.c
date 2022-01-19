@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdint.h>
 #include <string.h>
 #include <stdlib.h>
 
@@ -11,7 +12,7 @@ void *_transport_do_create(const char *uri,
 void *_transport_recv_routine(void *arg)
 {
 	int nbyte;
-	unsigned char payload[TRANSPORT_MAX_PAYLOAD];
+	uint8_t payload[TRANSPORT_MAX_PAYLOAD];
 	transport_t *t = arg;
 
 	while (t->open) {
@@ -42,7 +43,7 @@ void _transport_prune_client(transport_t *server)
 void *_transport_accept_routine(void *arg)
 {
 	int ret;
-	unsigned char payload[TRANSPORT_MAX_PAYLOAD];
+	uint8_t payload[TRANSPORT_MAX_PAYLOAD];
 	transport_t *t = arg;
 	
 	while (t->open) {
@@ -145,7 +146,7 @@ void transport_destroy(transport_t *t)
 	}
 }
 
-int transport_xfer(const char *uri, transport_t *t, void *data, int size)
+int transport_xfer(const char *uri, transport_t *t, void *data, size_t size)
 {
 	int nbyte;
 	if (!t || !data || !size) {

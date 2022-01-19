@@ -30,7 +30,7 @@ void *lbus_payload_get(void *msg)
 	return p;
 }
 
-void * lbus_msg_new(unsigned int data_size)
+void * lbus_msg_new(size_t data_size)
 {
 	int alloc_len = LMSG_HEADER_SIZE + data_size;
 	lbus_msg_t *m = NULL;

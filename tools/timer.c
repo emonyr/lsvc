@@ -7,7 +7,7 @@
 #include "mem.h"
 #include "timer.h"
 
-unsigned long int utils_timer_now(void)
+uint64_t utils_timer_now(void)
 {
 	return time(NULL);
 }
@@ -71,7 +71,7 @@ void *_utils_timer_run(void *arg)
 }
 
 void *utils_timer_start(void *cb, void *arg, 
-				unsigned int after, unsigned int interval, unsigned int repeat)
+				uint32_t after, uint32_t interval, uint32_t repeat)
 {	
 	utils_timer_t *t = mem_alloc(sizeof(utils_timer_t));
 	

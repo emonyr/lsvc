@@ -30,7 +30,7 @@ typedef struct {
 
 extern void *transport_create(const char *uri, transport_callback_t *cb, void *arg);
 extern void transport_destroy(transport_t *t);
-extern int transport_xfer(const char *uri, transport_t *t, void *data, int size);
+extern int transport_xfer(const char *uri, transport_t *t, void *data, size_t size);
 
 #ifdef __cplusplus
 } /* extern "C" */

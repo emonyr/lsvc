@@ -34,7 +34,7 @@ void uart_set_speed(int fd, int speed)
 			 cfsetispeed(&Opt, speed_arr[i]);
 			 cfsetospeed(&Opt, speed_arr[i]);
 			 if(tcsetattr(fd, TCSANOW, &Opt) != 0)
-				 printf("uart_SetSpeed: failed to set IO speed.\n");
+				fprintf(stderr, "uart_SetSpeed: failed to set IO speed.\n");
 		 }
 	 }
 	 tcflush(fd,TCIOFLUSH);
@@ -48,12 +48,12 @@ void uart_set_speed(int fd, int speed)
  *@param  stopbits: stop bit (1,2)
  *@param  parity: parity bit (N,E,O,S)
  */
-int uart_set_parity(int fd, unsigned char databits, unsigned char stopbits, unsigned char parity)
+int uart_set_parity(int fd, uint8_t databits, uint8_t stopbits, uint8_t parity)
 {
 	 struct termios options;
 
 	 if(tcgetattr(fd,&options) != 0)
-		 printf("uart_setParity: tcgetattr failed\n");
+		 fprintf(stderr, "uart_setParity: tcgetattr failed\n");
 	 
 	 //disable all character processing
 	 //options.c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL | IXON | IXOFF);
@@ -121,14 +121,14 @@ int uart_set_parity(int fd, unsigned char databits, unsigned char stopbits, unsi
 			 break;
 
 		 default:
-			 printf("Unsupported stop bits\n");
+			fprintf(stderr, "Unsupported stop bits\n");
 			 return -1;
 	 }
 	 
 	 tcflush(fd,TCIFLUSH); /* update the options */
 	 
 	 if(tcsetattr(fd,TCSANOW,&options) != 0)
-		 printf("uart_setParity: tcsetattr failed\n");
+		fprintf(stderr, "uart_setParity: tcsetattr failed\n");
 	 
 	 return 0;
  }
@@ -140,22 +140,22 @@ int uart_set_parity(int fd, unsigned char databits, unsigned char stopbits, unsi
  *@param	 arg: argument to init uart
  *@return	 fd: uart file descriptor
  */
-int uart_init(const char *dev, int baud_rate, unsigned char databits,
-				unsigned char parity, unsigned char stopbits)
+int uart_init(const char *dev, int baud_rate, uint8_t databits,
+				uint8_t parity, uint8_t stopbits)
 {
 	 int fd;
 	 
 	 //open uart
 	 fd = open( dev, O_RDWR | O_NOCTTY | O_NONBLOCK);
 	 if(fd == -1)
-		 printf("uart_init: failed to open uart port.\n");
+		fprintf(stderr, "uart_init: failed to open uart port.\n");
 	 
 	 //set baud rate
 	 uart_set_speed(fd,baud_rate);
 	 
 	 //set parity
 	 if(uart_set_parity(fd,databits,stopbits,parity) == -1)
-		 printf("uart_setParity: failed to set parity.\n");
+		fprintf(stderr, "uart_setParity: failed to set parity.\n");
 	 
 	 //set FNDELAY
 	 fcntl(fd,F_SETFL,FNDELAY);

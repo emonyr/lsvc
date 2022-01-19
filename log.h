@@ -6,6 +6,7 @@ extern "C" {
 #endif
 
 #include <stdio.h>
+#include <stdint.h>
 #include "parallel.h"
 #include "lsvc.h"
 
@@ -66,7 +67,7 @@ typedef struct {
 
 extern int log_impl(FILE *output, int level, const char* filename, int line, 
 						const char* function,const char *format, ...);
-extern void log_hex_dump(unsigned char *data, int size);
+extern void log_hex_dump(uint8_t *data, size_t size);
 
 extern lsvc_t log_svc;
 

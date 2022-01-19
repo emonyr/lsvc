@@ -4,7 +4,7 @@
 #include "file.h"
 
 int file_read_content(const char *filename,char *buffer,
-									int size, long offset)
+									size_t size, long offset)
 {
 	int nbytes;
 	FILE *fp = NULL;
@@ -21,7 +21,7 @@ int file_read_content(const char *filename,char *buffer,
 
 
 int file_write_content(const char *filename,char *buffer,
-									int size, long offset)
+									size_t size, long offset)
 {
 	int nbytes;
 	FILE *fp = NULL;
@@ -38,7 +38,7 @@ int file_write_content(const char *filename,char *buffer,
 
 
 int file_append_content(const char *filename,char *buffer,
-									int size)
+									size_t size)
 {
 	int nbytes;
 	FILE *fp = NULL;

@@ -273,8 +273,8 @@ void lsvc_shutdown(void *runtime)
 	r->priv = NULL;
 }
 
-int lsvc_event_send(int event, void *data, unsigned int size, 
-						unsigned int flags, void *_src_msg)
+int lsvc_event_send(int event, void *data, uint32_t size, 
+						uint32_t flags, void *_src_msg)
 {
 	int err;
 	lbus_msg_t *src_msg = _src_msg;

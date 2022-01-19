@@ -5,6 +5,8 @@
 extern "C" {
 #endif
 
+#include <stdint.h>
+
 #include "socket.h"
 #include "list.h"
 #include "kvlist.h"
@@ -26,13 +28,13 @@ typedef enum {
 }lbus_flag_t;
 
 typedef struct {
-	unsigned int event;
-	unsigned int msg_id;
-	unsigned int size;
-	unsigned int flags;
+	uint32_t event;
+	uint32_t msg_id;
+	uint32_t size;
+	uint32_t flags;
 	socket_addr_t src;
 	socket_addr_t des;
-	unsigned char *payload;
+	uint8_t *payload;
 }__attribute__ ((packed))lbus_msg_t;
 
 #define LMSG_MAX_SIZE (10240)
@@ -59,7 +61,7 @@ typedef struct {
 	void *self;
 	int timestamp;
 	char key[LBUS_RECORD_KEY_SIZE];
-	unsigned char payload[LBUS_RECORD_PAYLOAD_SIZE];
+	uint8_t payload[LBUS_RECORD_PAYLOAD_SIZE];
 	struct list_head entry;
 }__attribute__ ((packed))lbus_route_record_t;
 
@@ -73,7 +75,7 @@ typedef struct {
 }__attribute__ ((packed))lbus_broker_t;
 
 extern void *lbus_payload_get(void *msg);
-extern void * lbus_msg_new(unsigned int data_size);
+extern void * lbus_msg_new(size_t data_size);
 extern void lbus_msg_destroy(void *msg);
 
 extern int lbus_send_ping(lbus_endpoint_t *ep);

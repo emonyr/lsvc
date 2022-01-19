@@ -43,26 +43,26 @@ typedef struct {
 	socket_info_t sock;
 	pid_t pid;
 	void *tid;
-	unsigned int timeout;
+	uint32_t timeout;
 	char tx_buf[PACKET_SIZE];
 	char rx_buf[PACKET_SIZE];
-	unsigned int rx_len;
-	unsigned int ttime;
+	uint32_t rx_len;
+	uint32_t ttime;
 }__attribute__ ((packed))network_ping_t;
 
-unsigned short network_ping_chksum(unsigned short *data,int len)
+uint16_t network_ping_chksum(uint16_t *data,int len)
 {
 	int nbyte = len;
 	int sum=0;
-	unsigned short *w=data;
-	unsigned short answer=0;
+	uint16_t *w=data;
+	uint16_t answer=0;
 	while(nbyte > 1) {
 		sum += *w++;
 		nbyte -= 2;
 	}
 
 	if (nbyte == 1) {
-		*(unsigned char *)(&answer)=*(unsigned char *)w;
+		*(uint8_t *)(&answer)=*(uint8_t *)w;
 		sum += answer;
 	}
 	sum = (sum>>16)+ (sum&0xffff);
@@ -85,7 +85,7 @@ int network_ping_pack(int num, network_ping_t *p)
 
 	size = ICMP_HEADSIZE + sizeof(struct timeval);
 	gettimeofday((void *)icmp->icmp_data,NULL);
-	icmp->icmp_cksum = network_ping_chksum((unsigned short *)icmp, size);
+	icmp->icmp_cksum = network_ping_chksum((uint16_t *)icmp, size);
 
 	return size;
 }
@@ -162,7 +162,7 @@ int network_ping_recv(int num, network_ping_t *p)
 	return 0;
 }
 
-int network_ping(const char *des, unsigned int count)
+int network_ping(const char *des, uint32_t count)
 {
 	int try=0,success=0;
 	
@@ -232,12 +232,12 @@ int network_eth_info_update(const char *eth_inf)
 	}
 	
 	snprintf(s->mac, 18, "%02x:%02x:%02x:%02x:%02x:%02x",
-	(unsigned char)ifr.ifr_hwaddr.sa_data[0],
-	(unsigned char)ifr.ifr_hwaddr.sa_data[1],
-	(unsigned char)ifr.ifr_hwaddr.sa_data[2],
-	(unsigned char)ifr.ifr_hwaddr.sa_data[3],
-	(unsigned char)ifr.ifr_hwaddr.sa_data[4],
-	(unsigned char)ifr.ifr_hwaddr.sa_data[5]);
+	(uint8_t)ifr.ifr_hwaddr.sa_data[0],
+	(uint8_t)ifr.ifr_hwaddr.sa_data[1],
+	(uint8_t)ifr.ifr_hwaddr.sa_data[2],
+	(uint8_t)ifr.ifr_hwaddr.sa_data[3],
+	(uint8_t)ifr.ifr_hwaddr.sa_data[4],
+	(uint8_t)ifr.ifr_hwaddr.sa_data[5]);
 	
 	if (ioctl(sock, SIOCGIFADDR, &ifr) < 0) {
 		log_err("Ioctl error: %s\n", strerror(errno));
@@ -283,7 +283,7 @@ void network_state_report(void *arg, timer_t id)
 }
 
 // intent_handler for vendor
-int network_svc_intent_handler(int event, void *data, int size)
+int network_svc_intent_handler(int event, void *data, size_t size)
 {
 	int ret;
 	network_svc_state_t *s = &network_state;

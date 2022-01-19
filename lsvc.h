@@ -5,6 +5,7 @@
 extern "C" {
 #endif
 
+#include <stdint.h>
 #include <getopt.h>
 
 typedef enum {
@@ -29,7 +30,7 @@ typedef struct {
 }__attribute__ ((packed))lsvc_t;
 
 typedef struct {
-	int running;
+	uint8_t running;
 	lsvc_t **svc_list;
 	void *priv;
 }__attribute__ ((packed))lsvc_runtime_t;
@@ -38,8 +39,8 @@ extern void *lsvc_runtime_get(void);
 extern int lsvc_thread_call(void *runtime, void *msg);
 extern int lsvc_bus_call(void *runtime, void *msg);
 extern void lsvc_shutdown(void *runtime);
-extern int lsvc_event_send(int event, void *data, unsigned int size, 
-						unsigned int flags, void *_src_msg);
+extern int lsvc_event_send(int event, void *data, uint32_t size, 
+						uint32_t flags, void *_src_msg);
 
 #ifdef __cplusplus
 } /* extern "C" */

@@ -14,7 +14,7 @@
  */
 #define ceillog2(x) (luaO_log2_xx((x)-1) + 1)
 
-static int luaO_log2_xx (unsigned int x) {
+static int luaO_log2_xx (uint32_t x) {
     static const int log_2[256] = {
         0,1,2,2,3,3,3,3,4,4,4,4,4,4,4,4,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,
         6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,
@@ -31,13 +31,13 @@ static int luaO_log2_xx (unsigned int x) {
 }
 
 
-static int roundup_pow_of_two(int size) {
+static int roundup_pow_of_two(size_t size) {
     int round_log_of_two;
     round_log_of_two = ceillog2(size);
     return 1 << round_log_of_two;
 }
 
-int kmsg_new(struct kmsg *buf, int size) {
+int kmsg_new(struct kmsg *buf, size_t size) {
     int ret = 0;
     if (buf) {
         size = roundup_pow_of_two(size);
@@ -52,7 +52,7 @@ int kmsg_new(struct kmsg *buf, int size) {
         parallel_spin_init(&buf->lock);
 
         if (size > 0) {
-            buf->data = (unsigned char *)mem_alloc(sizeof(char) * size);
+            buf->data = (uint8_t *)mem_alloc(sizeof(char) * size);
             if (!buf->data) ret = -1;
         }
 
@@ -80,11 +80,11 @@ int kmsg_delete(struct kmsg *buf) {
 }
 
 
-int kmsg_push(struct kmsg *buf, const char *data, int len) {
+int kmsg_push(struct kmsg *buf, const char *data, size_t len) {
 
     parallel_spin_lock(&buf->lock);  
 
-    unsigned int l;
+    uint32_t l;
 
     if(len <= 0){
         printf("data length invalid\n");
@@ -103,7 +103,7 @@ int kmsg_push(struct kmsg *buf, const char *data, int len) {
         return 0;
     }
 
-    assert((buf->size - buf->in + buf->out) > len); // 必须保证有足够的空间
+    assert((buf->size - buf->in + buf->out) > len);
     len = min(len, buf->size - buf->in + buf->out);
 
     l = min(len, buf->size - (buf->in & (buf->size - 1)));
@@ -123,11 +123,7 @@ int kmsg_push(struct kmsg *buf, const char *data, int len) {
 
 
 int kmsg_check(struct kmsg *buf) {
-    if (buf->msg_number > 0) {
-        // 返回第一个 msg part 的长度
-        return buf->msg_part_len[0];
-    }
-    else return 0;
+    return (buf->msg_number > 0) ? buf->msg_part_len[0] : 0;
 }
 
 
@@ -138,7 +134,7 @@ int kmsg_pop(struct kmsg *buf, char *data) {
     parallel_spin_lock(&buf->lock);  
 
     int len;
-    unsigned int l;
+    uint32_t l;
     len = buf->msg_part_len[0];
 
     l = min(len, buf->size - (buf->out & (buf->size - 1)));
@@ -148,7 +144,6 @@ int kmsg_pop(struct kmsg *buf, char *data) {
 
     buf->out += len;
 
-    // 对 msg part 重新排列
     buf->msg_number -= 1;
     for (int i = 0; i < buf->msg_number; i++) {
         buf->msg_part_len[i] = buf->msg_part_len[i + 1];

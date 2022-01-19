@@ -42,8 +42,8 @@ extern int socket_get_host_ip(const char *des, char *output);
 extern int socket_parse_uri(const char *uri, socket_info_t *iface);
 extern int socket_open(const char *uri, socket_info_t *iface);
 extern int socket_close(socket_info_t *iface);
-extern int socket_recv(socket_info_t *iface, void *data, int size);
-extern int socket_send(socket_info_t *iface, void *data, int size);
+extern int socket_recv(socket_info_t *iface, void *data, size_t size);
+extern int socket_send(socket_info_t *iface, void *data, size_t size);
 
 extern int socket_tcp_server_init(socket_info_t *iface);
 extern int socket_tcp_client_init(socket_info_t *iface);

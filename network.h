@@ -5,6 +5,7 @@
 extern "C" {
 #endif
 
+#include <stdint.h>
 #include "lsvc.h"
 
 #define NETWORK_SSID_MAX_LENGTH 32
@@ -36,22 +37,22 @@ typedef enum {
 typedef struct {
 	network_state_val_t v;
 	void *tid;
-	unsigned char ssid[NETWORK_SSID_MAX_LENGTH+1];	//including '\0'
-	unsigned char ssid_len;
-	unsigned char pwd[NETWORK_PWD_MAX_LENGTH+1];	//including '\0'
-	unsigned char pwd_len;
-	unsigned int security;
-	unsigned char mac[32];
-	unsigned char ip[32];
+	uint8_t ssid[NETWORK_SSID_MAX_LENGTH+1];	//including '\0'
+	uint8_t ssid_len;
+	uint8_t pwd[NETWORK_PWD_MAX_LENGTH+1];	//including '\0'
+	uint8_t pwd_len;
+	uint32_t security;
+	uint8_t mac[32];
+	uint8_t ip[32];
 }__attribute__ ((packed))network_svc_state_t;
 
 typedef struct {
 	char ping_address[64];
-	unsigned int count;
+	uint32_t count;
 }network_ctl_t;
 
-extern int network_ping(const char *des, unsigned int count);
-extern int network_svc_intent_handler(int event, void *data, int size);
+extern int network_ping(const char *des, uint32_t count);
+extern int network_svc_intent_handler(int event, void *data, size_t size);
 
 extern lsvc_t network_svc;
 

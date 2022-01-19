@@ -6,7 +6,7 @@
 
 //TODO: manage memory pool
 
-void * mem_alloc(unsigned int size)
+void * mem_alloc(uint32_t size)
 {
 	void *p = NULL;
 	
