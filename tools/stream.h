@@ -5,7 +5,6 @@
 extern "C" {
 #endif
 
-#include "list.h"
 #include <stdint.h>
 
 #define STREAM_DEFAULT_BLOCK_SIZE (4096)

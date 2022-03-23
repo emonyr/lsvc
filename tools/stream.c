@@ -46,7 +46,7 @@ static inline void* stream_extend(stream_t* s, size_t target_size)
         goto FAIL;
     }
 
-    memset(new_blocks, 0, new_nblock * sizeof(stream_block_t));
+    memset(new_blocks, 0, new_nblock * sizeof(stream_block_t*));
     for (int i = s->nblock; i < new_nblock; i++) {
         new_blocks[i] = mem_alloc(sizeof(stream_block_t));
         if (!new_blocks[i]) {
@@ -58,13 +58,13 @@ static inline void* stream_extend(stream_t* s, size_t target_size)
 
     if (s->blocks) {
         memcpy(new_blocks, s->blocks, s->nblock * sizeof(stream_block_t*));
-        free(s->blocks);
+        mem_free(s->blocks);
     }
 
     s->blocks = new_blocks;
     s->nblock = new_nblock;
-    s->w = s->w ? s->blocks[0]->buffer : s->w;
-    s->r = s->r ? s->blocks[0]->buffer : s->r;
+    s->w = (s->w ? s->w : s->blocks[0]->buffer);
+    s->r = (s->r ? s->r : s->blocks[0]->buffer);
     s->bytes_available += (gap * STREAM_DEFAULT_BLOCK_SIZE);
 
     return s->w;
@@ -90,9 +90,10 @@ static inline void* stream_resize(stream_t* s, size_t target_size)
 
     if (s->bytes_available < target_size) {
         p = stream_extend(s, target_size);
-    } else
+    } else{
         p = s->w;
-
+    }
+	
     return p;
 }
 
@@ -104,7 +105,7 @@ size_t stream_peek(stream_t* s)
 static inline void stream_rotate(stream_t* s)
 {
     void* temp = s->blocks[0];
-    memcpy(s->blocks, s->blocks + 1, s->nblock - 1);
+    memcpy(&s->blocks[0], &s->blocks[1], (s->nblock - 1) * sizeof(stream_block_t*));
 	s->blocks[s->nblock] = temp;
 }
 
@@ -123,7 +124,7 @@ int stream_push(stream_t* s, void* _payload, size_t len)
             s->w = s->blocks[s->current]->buffer;
         }
 
-        *s->w = payload[i];
+       *(s->w) = payload[i];
         s->w++;
         s->bytes_written++;
         s->bytes_available--;
@@ -149,8 +150,9 @@ int stream_pop(stream_t* s, size_t needed, void* _bucket)
 			s->r = s->blocks[0]->buffer;
 			s->bytes_available += STREAM_DEFAULT_BLOCK_SIZE;
         }
-        *bucket = s->r;
+        bucket[i] = *(s->r);
 		s->r++;
+		s->bytes_written--;
     }
 
 	return pop_size;
