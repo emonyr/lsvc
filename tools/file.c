@@ -25,7 +25,7 @@ int file_write_content(const char *filename,char *buffer,
 {
 	int nbytes;
 	FILE *fp = NULL;
-	fp = fopen(filename, "w");
+	fp = fopen(filename, "w+");
 	if(!fp) return -1;
 	
 	fseek(fp,offset,SEEK_SET);

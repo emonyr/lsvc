@@ -17,7 +17,7 @@ void * mem_alloc(uint32_t size)
 	if(p){
 		memset(p,0,size);
 	}else{
-		fprintf(stderr, "mem_alloc failed\n");
+		fprintf(stderr, "%s failed at %d\n", __func__, __LINE__);
 	}
 	
 	return p;
