@@ -23,7 +23,7 @@ void* stream_create(void)
     s->blocks = NULL;
     s->w = NULL;
     s->r = NULL;
-	s->current = 0;
+    s->current = 0;
     s->nblock = 0;
     s->bytes_written = 0;
     s->bytes_available = 0;
@@ -90,10 +90,10 @@ static inline void* stream_resize(stream_t* s, size_t target_size)
 
     if (s->bytes_available < target_size) {
         p = stream_extend(s, target_size);
-    } else{
+    } else {
         p = s->w;
     }
-	
+
     return p;
 }
 
@@ -104,9 +104,15 @@ size_t stream_peek(stream_t* s)
 
 static inline void stream_rotate(stream_t* s)
 {
-    void* temp = s->blocks[0];
-    memcpy(&s->blocks[0], &s->blocks[1], (s->nblock - 1) * sizeof(stream_block_t*));
-	s->blocks[s->nblock] = temp;
+    if (s->current > 0) {
+        void* temp = s->blocks[0];
+        memcpy(&s->blocks[0], &s->blocks[1], (s->nblock - 1) * sizeof(stream_block_t*));
+        s->blocks[s->nblock - 1] = temp;
+        s->current--;
+        s->bytes_available += STREAM_DEFAULT_BLOCK_SIZE;
+    }
+
+	s->r = s->blocks[0]->buffer;
 }
 
 int stream_push(stream_t* s, void* _payload, size_t len)
@@ -124,7 +130,7 @@ int stream_push(stream_t* s, void* _payload, size_t len)
             s->w = s->blocks[s->current]->buffer;
         }
 
-       *(s->w) = payload[i];
+        *(s->w) = payload[i];
         s->w++;
         s->bytes_written++;
         s->bytes_available--;
@@ -145,17 +151,14 @@ int stream_pop(stream_t* s, size_t needed, void* _bucket)
 
     for (int i = 0; i < pop_size; i++) {
         if (s->r == s->blocks[0]->end) {
-			stream_rotate(s);
-			s->current--;
-			s->r = s->blocks[0]->buffer;
-			s->bytes_available += STREAM_DEFAULT_BLOCK_SIZE;
+            stream_rotate(s);
         }
         bucket[i] = *(s->r);
-		s->r++;
-		s->bytes_written--;
+        s->r++;
+        s->bytes_written--;
     }
 
-	return pop_size;
+    return pop_size;
 }
 
 #ifdef __cplusplus
