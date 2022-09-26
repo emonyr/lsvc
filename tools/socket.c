@@ -194,7 +194,7 @@ int socket_connect(socket_info_t *iface)
 	return 0;
 }
 
-int socket_wait(socket_info_t *iface, int second)
+int socket_wait(socket_info_t *iface, int second, unsigned long usecond)
 {
 	fd_set readfds;
 	struct timeval tv;
@@ -203,7 +203,7 @@ int socket_wait(socket_info_t *iface, int second)
 	FD_SET(iface->fd, &readfds);
 	
 	tv.tv_sec = second;
-	tv.tv_usec = 5000;	// at least wait 5ms
+	tv.tv_usec = usecond;
 
 	return select(FD_SETSIZE,&readfds,NULL,NULL,&tv);
 }
