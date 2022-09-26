@@ -37,7 +37,7 @@ extern int socket_bind(socket_info_t *iface);
 extern int socket_listen(socket_info_t *iface);
 extern int socket_accept(socket_info_t *server, socket_info_t *client);
 extern int socket_connect(socket_info_t *iface);
-extern int socket_wait(socket_info_t *iface, int second);
+extern int socket_wait(socket_info_t *iface, int second, unsigned long usecond);
 extern int socket_get_host_ip(const char *des, char *output);
 extern int socket_parse_uri(const char *uri, socket_info_t *iface);
 extern int socket_open(const char *uri, socket_info_t *iface);
