@@ -475,7 +475,7 @@ int socket_tcp_send(socket_info_t *iface, void *data, size_t size)
 	while(sent != size){
 		nbyte = write(iface->fd, &((uint8_t *)data)[sent], size-sent);
 		if(nbyte < 0){
-			if(nbyte == EAGAIN)
+			if(errno == EAGAIN)
 				continue;
 			else
 				break;
