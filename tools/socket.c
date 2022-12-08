@@ -395,10 +395,7 @@ int socket_tcp_server_init(socket_info_t *iface)
 		if(socket_set_reuse(iface->fd, 1))
 			continue;
 
-		if(socket_listen(iface))
-			continue;
-
-		if(socket_set_non_block(iface->fd, 1) == 0)
+		if(socket_listen(iface) == 0)
 			break;
 	}
 
