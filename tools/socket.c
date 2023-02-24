@@ -78,11 +78,11 @@ int socket_set_reuse(int fd, int val)
 		return -1;
     }
 	
-	//if(setsockopt(fd,SOL_SOCKET,SO_REUSEPORT,
-	//					(void *)&val,sizeof(val)) == -1) {
-    //    fprintf(stderr, "%s failed: %s\n" , __func__, strerror(errno));
-	//	return -1;
-    //}
+	if(setsockopt(fd,SOL_SOCKET,SO_REUSEPORT,
+						(void *)&val,sizeof(val)) == -1) {
+        fprintf(stderr, "%s failed: %s\n" , __func__, strerror(errno));
+		return -1;
+    }
 	
 	return 0;
 }
@@ -389,10 +389,10 @@ int socket_tcp_server_init(socket_info_t *iface)
 		if(socket_set_close_on_exec(iface->fd, 1))
 			continue;
 
-		if(socket_bind(iface))
+		if(socket_set_reuse(iface->fd, 1))
 			continue;
 
-		if(socket_set_reuse(iface->fd, 1))
+		if(socket_bind(iface))
 			continue;
 
 		if(socket_listen(iface) == 0)
