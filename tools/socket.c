@@ -225,6 +225,25 @@ int socket_get_host_ip(const char *des, char *output)
 	return 0;
 }
 
+int socket_get_socket_name(socket_info_t *iface)
+{
+	if (iface->fd < 0)
+		return -1;
+
+	struct sockaddr_in address;
+	socklen_t len = sizeof(address);
+
+	if (getsockname(iface->fd, (struct sockaddr*)&address, &len) != 0) {
+		fprintf(stderr, "%s failed: %s\n", __func__, strerror(errno));
+		return -1;
+	}
+
+	sprintf(iface->src.addr, "%s", inet_ntoa(address.sin_addr));
+	sprintf(iface->src.port, "%d", ntohs(address.sin_port));
+
+	return 0;
+}
+
 int socket_parse_uri(const char *uri, socket_info_t *iface)
 {
 	int len=0;
@@ -395,7 +414,10 @@ int socket_tcp_server_init(socket_info_t *iface)
 		if(socket_bind(iface))
 			continue;
 
-		if(socket_listen(iface) == 0)
+		if(socket_listen(iface))
+			continue;
+
+		if (socket_get_socket_name(iface) == 0)
 			break;
 	}
 
@@ -445,11 +467,14 @@ int socket_tcp_client_init(socket_info_t *iface)
 		
 		if(socket_set_close_on_exec(iface->fd, 1))
 			continue;
-		
+
 		if(socket_connect(iface))
 			continue;
 
-		if(socket_set_non_block(iface->fd, 1) == 0)
+		if(socket_set_non_block(iface->fd, 1))
+			continue;
+
+		if (socket_get_socket_name(iface) == 0)
 			break;
 	}
 
@@ -553,20 +578,23 @@ int socket_udp_init(socket_info_t *iface)
 
 		iface->posix_addr_info = rp->ai_addr;
 		iface->posix_addr_len = rp->ai_addrlen;
-		
+
 		if(socket_set_close_on_exec(iface->fd, 1))
 			continue;
-		
+
 		if(socket_set_non_block(iface->fd, 1))
 			continue;
-		
+
 		if(socket_set_broadcast(iface->fd, 1))
 			continue;
-		
+
 		//if(socket_set_reuse(iface->fd, 1))
 		//	continue;
 
-		if(socket_bind(iface) == 0)
+		if(socket_bind(iface))
+			continue;
+
+		if (socket_get_socket_name(iface) == 0)
 			break;
 	}
 	

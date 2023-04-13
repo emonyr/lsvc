@@ -5,7 +5,7 @@
 extern "C" {
 #endif
 
-#define SOCKET_ADDR_MAX (32)
+#define SOCKET_ADDR_MAX (256)
 #define SOCKET_PORT_MAX (24)
 
 typedef enum {
@@ -39,6 +39,7 @@ extern int socket_accept(socket_info_t *server, socket_info_t *client);
 extern int socket_connect(socket_info_t *iface);
 extern int socket_wait(socket_info_t *iface, int second, unsigned long usecond);
 extern int socket_get_host_ip(const char *des, char *output);
+extern int socket_get_socket_name(socket_info_t *iface);
 extern int socket_parse_uri(const char *uri, socket_info_t *iface);
 extern int socket_open(const char *uri, socket_info_t *iface);
 extern int socket_close(socket_info_t *iface);
