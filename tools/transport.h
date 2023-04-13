@@ -9,7 +9,7 @@ extern "C" {
 #include "socket.h"
 #include "parallel.h"
 
-#define TRANSPORT_MAX_URI (128)
+#define TRANSPORT_MAX_URI (1024)
 #define TRANSPORT_MAX_PAYLOAD (4096)
 #define TRANSPORT_MAX_ERR (128)
 

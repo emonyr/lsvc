@@ -16,7 +16,7 @@ void *_transport_recv_routine(void *arg)
 	transport_t *t = arg;
 
 	while (t->open) {
-		if (socket_wait(&t->iface, 2) > 0) {
+		if (socket_wait(&t->iface, 2, 0) > 0) {
 			nbyte = socket_recv(&t->iface, payload, sizeof(payload));
 			if (nbyte > 0) {
 				t->cb(t->arg, payload, nbyte);
@@ -47,7 +47,7 @@ void *_transport_accept_routine(void *arg)
 	transport_t *t = arg;
 	
 	while (t->open) {
-		ret = socket_wait(&t->iface, 2);
+		ret = socket_wait(&t->iface, 2, 0);
 		if (ret > 0) {
 			ret = socket_recv(&t->iface, payload, sizeof(payload));
 			if (ret >= 0) {
