@@ -614,17 +614,17 @@ int socket_udp_send(socket_info_t *iface, void *data, size_t size)
 {
 	int nbyte;
 	struct sockaddr_in address;
-	
+
 	memset(&address, 0, sizeof(struct sockaddr_in));
 	address.sin_family = AF_INET;
 	address.sin_addr.s_addr = inet_addr(iface->des.addr);
 	address.sin_port = htons(atoi(iface->des.port));
-	
+
 	nbyte = sendto(iface->fd, data, size, MSG_DONTWAIT | MSG_NOSIGNAL, 
 						(struct sockaddr*)&address, sizeof(address));
 	if(nbyte < 0)
-		fprintf(stderr, "%s failed: %s:%s nbyte %d fd %d\n", __func__, iface->des.addr, iface->des.port, nbyte, iface->fd);
-	
+		fprintf(stderr, "%s failed: %s address %s:%s nbyte %d fd %d\n", __func__, strerror(errno), iface->des.addr, iface->des.port, nbyte, iface->fd);
+
 	return nbyte;
 }
 
@@ -637,10 +637,11 @@ int socket_udp_recv(socket_info_t *iface, void *data, size_t size)
 	nbyte = recvfrom(iface->fd, data, size, 0, 
 						(struct sockaddr*)&address, &len);
 
+	if (nbyte < 0)
+		fprintf(stderr, "%s failed: %s address %s:%s nbyte %d fd %d\n", __func__, strerror(errno), iface->src.addr, iface->src.port, nbyte, iface->fd);
+
 	sprintf(iface->src.addr, "%s", inet_ntoa(address.sin_addr));
 	sprintf(iface->src.port, "%d", ntohs(address.sin_port));
-	if (nbyte < 0)
-		fprintf(stderr, "%s failed: %s:%s nbyte %d fd %d\n", __func__, iface->src.addr, iface->src.port, nbyte, iface->fd);
 
 	return nbyte;
 }
