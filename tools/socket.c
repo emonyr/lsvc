@@ -417,6 +417,9 @@ int socket_tcp_server_init(socket_info_t *iface)
 		if(socket_listen(iface))
 			continue;
 
+		if(socket_set_non_block(iface->fd, 1))
+			continue;
+
 		if (socket_get_socket_name(iface) == 0)
 			break;
 	}
