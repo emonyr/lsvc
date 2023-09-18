@@ -33,6 +33,7 @@ extern int socket_set_close_on_exec(int fd, int val);
 extern int socket_set_non_block(int fd, int val);
 extern int socket_set_reuse(int fd, int val);
 extern int socket_set_broadcast(int fd, int val);
+extern int socket_set_keepalive(int fd, int val);
 extern int socket_bind(socket_info_t *iface);
 extern int socket_listen(socket_info_t *iface);
 extern int socket_accept(socket_info_t *server, socket_info_t *client);
