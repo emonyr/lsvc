@@ -16,9 +16,10 @@ CFLAGS := -std=c99 -fasm -D_GNU_SOURCE -Wall -Werror -g -O0
 
 # Lib flags
 LIB_CFLAGS := $(CFLAGS) -fPIC -shared -rdynamic -Wno-discarded-qualifiers \
-				-Wno-address-of-packed-member \
-				-Wno-pointer-to-int-cast -Wno-pointer-sign -Wno-int-conversion 
-				
+				-Wno-address-of-packed-member -Wno-unused-variable \
+				-Wno-pointer-to-int-cast -Wno-pointer-sign -Wno-int-conversion \
+				-Wno-format-truncation -Wno-format-overflow
+
 LIB_LDFLAGS := -fPIC -L$(OUTPUT_DIR) -l$(MODULE_NAME) -pthread -lrt
 
 # C source code files that are required
