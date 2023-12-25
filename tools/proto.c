@@ -172,9 +172,16 @@ void *proto_next_node(const char *path, char *node_name)
 proto_cache_t *proto_json_init(void *old_cache, char *context)
 {
 	proto_cache_t *c = old_cache;
+	void *payload = NULL;
 
 	if (!context) {
 		fprintf(stderr, "Invalid param\n");
+		goto out;
+	}
+
+	payload = cJSON_Parse(context);
+	if (!payload) {
+		fprintf(stderr, "Invalid json format\n");
 		goto out;
 	}
 
@@ -182,6 +189,7 @@ proto_cache_t *proto_json_init(void *old_cache, char *context)
 		c = mem_alloc(sizeof(proto_cache_t));
 		if (!c) {
 			fprintf(stderr, "Failed to alloc memory\n");
+			cJSON_Delete(payload);
 			goto out;
 		}
 	}else{
@@ -192,15 +200,7 @@ proto_cache_t *proto_json_init(void *old_cache, char *context)
 	}
 
 	c->type = TYPE_JSON;
-	c->payload = cJSON_Parse(context);
-	if (!c->payload) {
-		fprintf(stderr, "Failed to parse json\n");
-		if (c != old_cache) {
-			proto_json_destroy(c);
-		}
-
-		c = NULL;
-	}
+	c->payload = payload;
 
 out:
 	return c;
@@ -307,7 +307,7 @@ double proto_json_num_get(proto_cache_t *c, const char *path)
 	if (!n)
 		return -1;
 
-	return n->type == cJSON_Number ? n->valuedouble : -1;
+	return n->type == cJSON_Number ? (n->valueint?n->valueint:n->valuedouble) : -1;
 }
 
 int proto_json_str_add(proto_cache_t *c, const char *path,
